@@ -1,0 +1,55 @@
+{
+  "action": "revert last mistaken suppliers upload",
+  "database": "data/nova_groups.sqlite3",
+  "supplier_id_range_deleted": [
+    2497,
+    4995
+  ],
+  "deleted_rows": 2499,
+  "suppliers_before": 4991,
+  "suppliers_after": 2492,
+  "products_before": 2499,
+  "products_after": 2499,
+  "sample_deleted_rows": [
+    {
+      "id": 2497,
+      "name": "Société RAMOPHARM DEVELOPPEMENT PROMOTION (RDP)",
+      "phone": "SOMNIZEN B30 COMP",
+      "email": "169,0000",
+      "address": "112,6700",
+      "city": "TVA (20.00%)"
+    },
+    {
+      "id": 2498,
+      "name": "Société RAMOPHARM DEVELOPPEMENT PROMOTION (RDP)",
+      "phone": "ARCUREX B30 GELULES",
+      "email": "149,9000",
+      "address": "104,9300",
+      "city": "TVA (20.00%)"
+    },
+    {
+      "id": 2499,
+      "name": "Société RAMOPHARM DEVELOPPEMENT PROMOTION (RDP)",
+      "phone": "CHARBEX B30 COMP",
+      "email": "75,0000",
+      "address": "52,5000",
+      "city": "TVA (20.00%)"
+    },
+    {
+      "id": 2500,
+      "name": "Société RAMOPHARM DEVELOPPEMENT PROMOTION (RDP)",
+      "phone": "ARTIMAX CO B45 COMP",
+      "email": "249,0000",
+      "address": "174,3000",
+      "city": "TVA (20.00%)"
+    },
+    {
+      "id": 2501,
+      "name": "Laboratoire ALTHEA",
+      "phone": "DEFLAGYN GEL VAGINAL 150ML",
+      "email": "594,6000",
+      "address": "396,4200",
+      "city": "TVA (20.00%)"
+    }
+  ]
+}

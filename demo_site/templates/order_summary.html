@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block content %}
+{{ ui.page_header("Pedido: " ~ order_id, "Resumen acumulado por farmacia") }}
+<div class="order-detail-layout">
+  <section class="block order-detail-main">
+    <div class="order-summary-meta">
+      <div><span>Objeto</span><strong>{{ order.subject or "Sin objeto" }}</strong></div>
+      <div><span>Proveedor</span><strong>{{ order.supplier or "Sin proveedor" }}</strong></div>
+      <div><span>Fecha limite</span><strong>{{ order.deadline|date_display if order.deadline else "Sin fecha" }}</strong></div>
+    </div>
+
+    <div class="summary-heading order-summary-heading">
+      <div>
+        <h2>Productos acumulados</h2>
+        <p>Las cantidades muestran lo solicitado por cada farmacia y el total conjunto.</p>
+      </div>
+    </div>
+
+    {% if order_summary.rows %}
+      <div class="table-wrap order-summary-wrap">
+        <table class="data-table order-summary-table">
+          <thead>
+            <tr>
+              <th>Producto</th>
+              {% for pharmacy in order_summary.pharmacies %}
+                <th>{{ pharmacy }}</th>
+              {% endfor %}
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for product in order_summary.rows %}
+              <tr>
+                <td>{{ product.name }}</td>
+                {% for pharmacy in order_summary.pharmacies %}
+                  <td class="numeric-cell">{{ product.quantities.get(pharmacy, "") }}</td>
+                {% endfor %}
+                <td class="numeric-cell row-total">{{ product.total }}</td>
+              </tr>
+            {% endfor %}
+            <tr class="summary-total-row">
+              <th>Total</th>
+              {% for pharmacy in order_summary.pharmacies %}
+                <th class="numeric-cell">{{ order_summary.totals.get(pharmacy, "") }}</th>
+              {% endfor %}
+              <th class="numeric-cell">{{ order_summary.grand_total }}</th>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="empty summary-empty">Todavia no hay productos seleccionados por las farmacias.</p>
+    {% endif %}
+  </section>
+
+  <aside class="order-side-panel">
+    <h2>Opciones</h2>
+    <a class="side-action" href="{{ modify_url }}">Modificar pedido</a>
+    {% if manager_url %}
+      <a class="side-action" href="{{ manager_url }}">Modificar como gestor</a>
+    {% endif %}
+    <a class="side-action" href="{{ url_for('purchaseorder_recap', order_id=order_id) }}">Recapitulacion</a>
+    <a class="side-action" href="{{ print_url }}" target="_blank">Imprimir pedido</a>
+    <p>Estas cantidades son el resultado acumulado de todas las farmacias.</p>
+  </aside>
+</div>
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block content %}
+{{ ui.page_header("Panel", "Resumen operativo del grupo") }}
+
+<section class="stats-grid">
+  {% for stat in stats %}
+    <article class="stat-card">
+      <div class="stat-card__top">
+        <span class="stat-icon stat-icon-{{ loop.index }}" aria-hidden="true"></span>
+        <span>{{ stat.label }}</span>
+      </div>
+      <strong class="stat-card__value">{{ stat.value }}</strong>
+      <small>{{ stat.trend }}</small>
+    </article>
+  {% endfor %}
+</section>
+
+<section class="dashboard-grid">
+  <div class="block">
+    <h2>Pedidos recientes</h2>
+    <div class="mini-list">
+      {% for order in recent_orders %}
+        <a href="{{ url_for('purchaseorder_edit', order_id=order.number) }}">
+          <span>{{ order.subject }}</span>
+          <b>{{ order.status }}</b>
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="block">
+    <h2>Proximos eventos</h2>
+    <div class="mini-list">
+      {% for event in events %}
+        <a href="{{ url_for('events') }}">
+          <span>{{ event.day }} - {{ event.title }}</span>
+          <b>{{ event.supplier }}</b>
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endblock %}

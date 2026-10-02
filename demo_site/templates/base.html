@@ -1,0 +1,60 @@
+{% import "macros.html" as ui %}
+<!doctype html>
+<html lang="{{ language }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ brand.strong }} {{ brand.light }} - {{ title }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <script src="{{ url_for('static', filename='date-fields.js') }}" defer></script>
+</head>
+<body class="app-page">
+  <header class="topbar">
+    <a class="menu-toggle" href="#menu"><span class="menu-toggle__icon" aria-hidden="true">+</span>Menu</a>
+    <a class="brand-logo" href="{{ url_for('dashboard') }}"><span class="brand-mark" aria-hidden="true">+</span><span><strong>{{ brand.strong }}</strong> {{ brand.light }}</span></a>
+    <div class="profile-menu">
+      <span class="avatar">{{ current_user.name[:1] }}</span>
+      <span>{{ current_user.name }}</span>
+      <nav>
+        <a href="{{ url_for('profile') }}">Perfil</a>
+        <a href="{{ url_for('logout') }}">Salir</a>
+      </nav>
+    </div>
+    <form class="language-switcher" method="get" action="{{ url_for('set_language') }}">
+      <label class="sr-only" for="language-select">Idioma</label>
+      <select id="language-select" name="lang" onchange="this.form.submit()" aria-label="Idioma">
+        <option value="es" {% if language == "es" %}selected{% endif %}>Español</option>
+        <option value="fr" {% if language == "fr" %}selected{% endif %}>Français</option>
+      </select>
+      <input type="hidden" name="next" value="{{ request.full_path }}">
+    </form>
+  </header>
+
+  <aside class="side-menu" id="menu">
+    <nav class="side-menu__expanded">
+      <a class="menu-hint" href="#menu">Los modulos estan en los iconos laterales</a>
+      {% for item in nav_items %}
+        <a class="{% if active == item.key %}selected{% endif %}" href="{{ url_for(item.endpoint) }}">
+          {{ ui.icon(item.icon) }}<span>{{ item.label }}</span>
+        </a>
+      {% endfor %}
+    </nav>
+    <nav class="side-menu__icons" aria-label="Navegacion compacta">
+      {% for item in nav_items %}
+        <a class="{% if active == item.key %}selected{% endif %}" href="{{ url_for(item.endpoint) }}" title="{{ item.label }}">
+          {{ ui.icon(item.icon) }}
+        </a>
+      {% endfor %}
+    </nav>
+  </aside>
+
+  <main class="content" id="main_container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="notice {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

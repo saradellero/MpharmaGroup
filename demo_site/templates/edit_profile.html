@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block content %}
+{{ ui.page_header("Editar perfil", "Actualiza los datos de la cuenta demo") }}
+<form class="block form-grid" method="post">
+  {{ ui.input_field("email", "Email", profile.email) }}
+  {{ ui.input_field("first_name", "Nombre", profile.first_name) }}
+  {{ ui.input_field("last_name", "Apellido", profile.last_name) }}
+  {{ ui.input_field("pharmacy_name", "Farmacia", profile.pharmacy_name) }}
+  {{ ui.input_field("mobile", "Movil", profile.mobile) }}
+  {{ ui.input_field("phone", "Telefono", profile.phone) }}
+  {{ ui.input_field("address", "Direccion", profile.address) }}
+  {{ ui.input_field("city", "Ciudad", profile.city) }}
+  {{ ui.select_field("country", "Pais", ["Maroc", "Espana", "Francia"], profile.country) }}
+  {{ ui.select_field("language", "Idioma", ["fr", "es", "en"], profile.language) }}
+  {{ ui.select_field("time_zone", "Zona horaria", ["Africa/Casablanca", "Europe/Madrid", "UTC"], profile.time_zone) }}
+  <div class="form-actions"><button class="btn btn-blue" type="submit">Guardar</button></div>
+</form>
+{% endblock %}

@@ -1,0 +1,371 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block content %}
+{{ ui.page_header("Pedido: " ~ order_id, "Detalle y lineas del pedido") }}
+<div class="order-detail-layout">
+<form id="order-form" method="post" class="order-detail-main">
+  <section class="block form-grid">
+    <h2 class="form-section">Datos del pedido</h2>
+    <label class="form-field">
+      <span>Gestor / farmacia</span>
+      <select class="input" name="owner_id" {% if not details_editable %}disabled{% endif %}>
+        {% for option in manager_options %}
+          <option value="{{ option.value }}" {% if option.value == order.owner_id %}selected{% endif %}>{{ option.label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% if not details_editable %}<input type="hidden" name="owner_id" value="{{ order.owner_id }}">{% endif %}
+    {% if details_editable %}
+      {{ ui.select_field("warehouse", "Almacen", ["Principal", "Secundario"], order.warehouse) }}
+    {% else %}
+      {{ ui.input_field("warehouse", "Almacen", order.warehouse, readonly=true) }}
+    {% endif %}
+    {{ ui.input_field("subject", "Objeto", order.subject, readonly=not details_editable) }}
+    {{ ui.date_field("deadline", "Fecha limite", order.deadline, readonly=not details_editable) }}
+    <label class="form-field">
+      <span>Proveedor</span>
+      <input class="input" name="supplier_id" id="order-supplier" list="supplier-options" value="{{ order.supplier }}" autocomplete="off" placeholder="Escribe o selecciona un proveedor">
+      <datalist id="supplier-options">
+        {% for supplier in supplier_options %}
+          <option value="{{ supplier }}"></option>
+        {% endfor %}
+      </datalist>
+    </label>
+    {{ ui.input_field("contact_id", "Contacto", order.contact, readonly=not details_editable) }}
+    <label class="form-field form-field-wide"><span>Condiciones</span><textarea class="input textarea" name="terms_and_conditions" {% if not details_editable %}readonly{% endif %}>{{ order.terms_and_conditions }}</textarea></label>
+  </section>
+
+  <section class="block form-grid">
+    <h2 class="form-section">Pago y entrega</h2>
+    {{ ui.input_field("payment_timeframe", "Plazo de pago", order.payment_timeframe, readonly=not details_editable) }}
+    {{ ui.input_field("delivery_timeframe", "Plazo de entrega", order.delivery_timeframe, readonly=not details_editable) }}
+    {{ ui.input_field("delivery_transporter", "Transportista", order.delivery_transporter, readonly=not details_editable) }}
+    <div class="payment-methods">
+      {% for method in ["cash", "check", "debit_card", "bill_of_exchange", "other"] %}
+        <label><input type="checkbox" name="accepted_payment_methods[]" value="{{ method }}" {% if method in order.payment_methods %}checked{% endif %} {% if not details_editable %}disabled{% endif %}> {{ method }}</label>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="block">
+    <h2 id="order-products">Productos</h2>
+    <div class="product-picker" data-product-picker>
+      <label class="form-field product-search-field">
+        <span>Producto</span>
+        <input class="input" id="product-search" type="search" autocomplete="off" placeholder="Escribe letras del producto">
+        <div class="autocomplete-list" id="product-suggestions" hidden></div>
+      </label>
+      <span class="bulk-upload__hint">Selecciona el proveedor arriba y filtra escribiendo el producto.</span>
+    </div>
+    <div data-selected-products-hidden></div>
+    <div class="table-wrap">
+      <table class="data-table editable-table">
+        <thead>
+          <tr>
+            <th class="select-col">Sel.</th>
+            <th>Producto</th>
+            <th>Cantidad</th>
+            <th>PPV</th>
+            <th>PPH TTC</th>
+            <th>IVA</th>
+            <th>Codigo</th>
+          </tr>
+        </thead>
+        <tbody data-provider-products-body>
+          <tr><td colspan="6" class="empty">Selecciona un proveedor para ver sus productos.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="form-actions"><button class="btn btn-blue" type="submit">Guardar</button></div>
+  </section>
+</form>
+<aside class="order-side-panel">
+  <h2>Opciones</h2>
+  {% if manager_return_url %}
+    <a class="side-action" href="{{ manager_return_url }}">Volver a edición del gestor</a>
+  {% elif pharmacy_mode %}
+    <a class="side-action" href="{{ url_for('purchaseorder_edit', order_id=order_id) }}">Ver resumen del pedido</a>
+  {% else %}
+    <a class="side-action" href="#order-products">Modificar pedido</a>
+  {% endif %}
+  {% if order_id != "Nuevo" %}
+    <a class="side-action" href="{{ url_for('purchaseorder_print', order_id=order_id) }}" target="_blank">Imprimir pedido</a>
+  {% else %}
+    <span class="side-action disabled">Imprimir pedido</span>
+  {% endif %}
+  <div class="order-live-totals" aria-live="polite">
+    <div class="order-live-total">
+      <span>Total PPV</span>
+      <strong data-live-total-ppv>0,00 MAD</strong>
+    </div>
+    <div class="order-live-total">
+      <span>Total PPH TTC</span>
+      <strong data-live-total-ttc>0,00 MAD</strong>
+    </div>
+  </div>
+  <p>La impresion incluye solo productos con cantidad 1 o superior.</p>
+  <button class="btn btn-blue side-submit" type="submit" form="order-form">Guardar cambios</button>
+</aside>
+</div>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    var catalog = {{ product_catalog|tojson }};
+    var selectedIds = new Set({{ selected_product_ids|tojson }});
+    var selectedQuantities = {{ selected_product_quantities|tojson }};
+    var supplierInput = document.getElementById("order-supplier");
+    var productSearchInput = document.getElementById("product-search");
+    var productSuggestions = document.getElementById("product-suggestions");
+    var tableBody = document.querySelector("[data-provider-products-body]");
+    var selectedHidden = document.querySelector("[data-selected-products-hidden]");
+    var liveTotalPpv = document.querySelector("[data-live-total-ppv]");
+    var liveTotalTtc = document.querySelector("[data-live-total-ttc]");
+
+    if (!supplierInput || !productSearchInput || !productSuggestions || !tableBody || !selectedHidden || !liveTotalPpv || !liveTotalTtc) {
+      return;
+    }
+
+    function currentSupplier() {
+      return supplierInput.value.trim();
+    }
+
+    function normalize(value) {
+      return String(value || "").toLowerCase();
+    }
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function productsForSupplier() {
+      var supplier = currentSupplier();
+      var query = normalize(productSearchInput.value.trim());
+      if (!supplier) {
+        return [];
+      }
+      return catalog
+        .filter(function (product) {
+          return product.supplier === supplier && (!query || normalize(product.name).indexOf(query) !== -1);
+        })
+        .sort(function (a, b) {
+          return normalize(a.name).localeCompare(normalize(b.name));
+        });
+    }
+
+    function parseAmount(value) {
+      var normalized = String(value || "").trim().replace(/\s/g, "");
+      var commaIndex = normalized.lastIndexOf(",");
+      var dotIndex = normalized.lastIndexOf(".");
+      if (commaIndex >= 0 && dotIndex >= 0) {
+        if (commaIndex > dotIndex) {
+          normalized = normalized.replace(/\./g, "").replace(",", ".");
+        } else {
+          normalized = normalized.replace(/,/g, "");
+        }
+      } else {
+        normalized = normalized.replace(",", ".");
+      }
+      var parsed = Number(normalized);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function formatAmount(value) {
+      return value.toLocaleString("{{ 'fr-FR' if language == 'fr' else 'es-ES' }}", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }) + " MAD";
+    }
+
+    function updateLiveTotals() {
+      var supplier = currentSupplier();
+      var totalPpv = 0;
+      var totalTtc = 0;
+      catalog.forEach(function (product) {
+        if (product.supplier !== supplier) {
+          return;
+        }
+        var quantity = parseAmount(selectedQuantities[String(product.id)] || "0");
+        if (quantity <= 0) {
+          return;
+        }
+        totalPpv += quantity * parseAmount(product.ppv);
+        totalTtc += quantity * parseAmount(product.pph);
+      });
+      liveTotalPpv.textContent = formatAmount(totalPpv);
+      liveTotalTtc.textContent = formatAmount(totalTtc);
+    }
+
+    function syncSelectedInputs() {
+      selectedHidden.innerHTML = "";
+      selectedIds.forEach(function (productId) {
+        var quantity = selectedQuantities[productId] || "0";
+        var input = document.createElement("input");
+        input.type = "hidden";
+        input.name = "selected_product_id";
+        input.value = productId;
+        selectedHidden.appendChild(input);
+        var quantityInput = document.createElement("input");
+        quantityInput.type = "hidden";
+        quantityInput.name = "product_quantity_" + productId;
+        quantityInput.value = quantity;
+        selectedHidden.appendChild(quantityInput);
+      });
+      updateLiveTotals();
+    }
+
+    function hideProductSuggestions() {
+      productSuggestions.hidden = true;
+      productSuggestions.innerHTML = "";
+    }
+
+    function renderProductSuggestions() {
+      var supplier = currentSupplier();
+      var query = productSearchInput.value.trim();
+      productSuggestions.innerHTML = "";
+
+      if (!supplier || !query) {
+        hideProductSuggestions();
+        return;
+      }
+
+      var matches = productsForSupplier().slice(0, 12);
+      productSuggestions.hidden = false;
+      if (!matches.length) {
+        productSuggestions.innerHTML = '<div class="autocomplete-empty">Sin coincidencias para este proveedor.</div>';
+        return;
+      }
+
+      matches.forEach(function (product) {
+        var button = document.createElement("button");
+        button.type = "button";
+        button.className = "autocomplete-option";
+        button.innerHTML =
+          "<strong>" + escapeHtml(product.name) + "</strong>" +
+          "<span>" + escapeHtml(product.ppv) + " / " + escapeHtml(product.pph) + " - " + escapeHtml(product.tax) + "</span>";
+        button.addEventListener("click", function () {
+          selectedIds.add(String(product.id));
+          if (!selectedQuantities[String(product.id)] || Number(selectedQuantities[String(product.id)]) < 1) {
+            selectedQuantities[String(product.id)] = "1";
+          }
+          syncSelectedInputs();
+          productSearchInput.value = "";
+          hideProductSuggestions();
+          renderProducts();
+          productSearchInput.focus();
+        });
+        productSuggestions.appendChild(button);
+      });
+    }
+
+    function renderProducts() {
+      var supplier = currentSupplier();
+      tableBody.innerHTML = "";
+
+      if (!supplier) {
+        tableBody.innerHTML = '<tr><td colspan="6" class="empty">Selecciona un proveedor para ver sus productos.</td></tr>';
+        updateLiveTotals();
+        return;
+      }
+
+      var products = productsForSupplier();
+      if (!products.length) {
+        tableBody.innerHTML = '<tr><td colspan="6" class="empty">No hay productos coincidentes para este proveedor.</td></tr>';
+        updateLiveTotals();
+        return;
+      }
+
+      products.forEach(function (product) {
+        var row = document.createElement("tr");
+        var productId = String(product.id);
+        var checked = selectedIds.has(productId) ? " checked" : "";
+        var quantity = selectedQuantities[productId] || "0";
+        row.innerHTML =
+          '<td class="row-select-cell"><input class="row-select-checkbox" type="checkbox" data-product-id="' + escapeHtml(productId) + '"' + checked + '></td>' +
+          '<td>' + escapeHtml(product.name) + '</td>' +
+          '<td><input class="input quantity-input" type="number" min="0" step="1" data-quantity-product-id="' + escapeHtml(productId) + '" value="' + escapeHtml(quantity) + '"></td>' +
+          '<td>' + escapeHtml(product.ppv) + '</td>' +
+          '<td>' + escapeHtml(product.pph) + '</td>' +
+          '<td>' + escapeHtml(product.tax) + '</td>' +
+          '<td>' + escapeHtml(product.barcode) + '</td>';
+        tableBody.appendChild(row);
+      });
+      updateLiveTotals();
+    }
+
+    tableBody.addEventListener("change", function (event) {
+      if (!event.target.matches("input[data-product-id]")) {
+        return;
+      }
+      if (event.target.checked) {
+        var checkedId = String(event.target.dataset.productId);
+        selectedIds.add(checkedId);
+        if (!selectedQuantities[checkedId] || Number(selectedQuantities[checkedId]) < 1) {
+          selectedQuantities[checkedId] = "1";
+        }
+      } else {
+        var uncheckedId = String(event.target.dataset.productId);
+        selectedIds.delete(uncheckedId);
+        selectedQuantities[uncheckedId] = "0";
+      }
+      syncSelectedInputs();
+      updateLiveTotals();
+      renderProducts();
+    });
+    tableBody.addEventListener("input", function (event) {
+      if (!event.target.matches("input[data-quantity-product-id]")) {
+        return;
+      }
+      var productId = String(event.target.dataset.quantityProductId);
+      var quantity = event.target.value;
+      selectedQuantities[productId] = quantity;
+      if (Number(quantity) >= 1) {
+        selectedIds.add(productId);
+        var checkbox = event.target.closest("tr").querySelector("input[data-product-id]");
+        if (checkbox) {
+          checkbox.checked = true;
+        }
+      } else {
+        selectedIds.delete(productId);
+        var checkbox = event.target.closest("tr").querySelector("input[data-product-id]");
+        if (checkbox) {
+          checkbox.checked = false;
+        }
+      }
+      syncSelectedInputs();
+    });
+
+    supplierInput.addEventListener("change", function () {
+      selectedIds = new Set();
+      selectedQuantities = {};
+      syncSelectedInputs();
+      productSearchInput.value = "";
+      hideProductSuggestions();
+      renderProducts();
+    });
+    supplierInput.addEventListener("input", function () {
+      selectedIds = new Set();
+      selectedQuantities = {};
+      syncSelectedInputs();
+      productSearchInput.value = "";
+      hideProductSuggestions();
+      renderProducts();
+    });
+    productSearchInput.addEventListener("input", function () {
+      renderProducts();
+      renderProductSuggestions();
+    });
+    productSearchInput.addEventListener("focus", renderProductSuggestions);
+    document.addEventListener("click", function (event) {
+      if (!event.target.closest(".product-search-field")) {
+        hideProductSuggestions();
+      }
+    });
+    syncSelectedInputs();
+    renderProducts();
+  });
+</script>
+{% endblock %}

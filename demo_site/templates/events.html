@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block content %}
+{{ ui.page_header("Planning", "Calendario mensual de acciones", "Crear" if can_edit else None, url_for('event_create') if can_edit else None) }}
+
+<section class="block calendar-block">
+  <div class="calendar-toolbar">
+    <a class="tool-btn" href="#"><</a>
+    <strong>Junio 2026</strong>
+    <a class="tool-btn" href="#">></a>
+    <a class="btn btn-white" href="#">Hoy</a>
+  </div>
+  <div class="calendar-grid">
+    {% for day_name in ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"] %}
+      <b>{{ day_name }}</b>
+    {% endfor %}
+    {% for day in range(1, 36) %}
+      <div class="calendar-day {% if day > 30 %}muted{% endif %}">
+        <span>{{ day if day <= 30 else day - 30 }}</span>
+        {% for event in events if event.day == day %}
+          <a href="{{ url_for('event_create') if can_edit else url_for('events') }}">{{ event.title }}</a>
+        {% endfor %}
+      </div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

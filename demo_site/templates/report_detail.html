@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block content %}
+{{ ui.page_header("Detalle de reporte", "Movimientos de tipo " ~ report_type ~ " para " ~ year) }}
+
+<section class="block">
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>N.</th><th>Objeto</th><th>Gestor</th><th>Proveedor</th><th>Fecha limite</th><th>Productos</th><th>Total {{ report_type }}</th></tr></thead>
+      <tbody>
+      {% for order in orders %}
+        <tr><td>{{ order.number }}</td><td>{{ order.subject }}</td><td>{{ order.manager }}</td><td>{{ order.supplier }}</td><td>{{ order.deadline|date_display }}</td><td>{{ order.products }}</td><td>{{ order.report_total }} MAD</td></tr>
+      {% else %}
+        <tr><td colspan="7" class="empty">Sin movimientos para el filtro seleccionado.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

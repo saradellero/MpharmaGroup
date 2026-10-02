@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block content %}
+{{ ui.page_header(
+  "Recapitulacion del pedido " ~ order_id,
+  "Importe por farmacia calculado con el PPH descontado",
+  back_label,
+  back_url
+) }}
+
+<section class="block">
+  <div class="block-toolbar">
+    <div>
+      <strong>{{ order.supplier or "Sin proveedor" }}</strong>
+      <span class="invoice-toolbar-note">Pedido {{ order_id }}</span>
+    </div>
+    <button class="btn btn-white no-print" type="button" onclick="window.print()">Imprimir</button>
+  </div>
+  <p class="invoice-formula-note">Cada celda muestra cantidad del producto en la farmacia x PPH descontado. Los importes se expresan con dos o mas decimales cuando es necesario.</p>
+
+  {% if recap.rows %}
+    <div class="table-wrap">
+      <table class="data-table order-summary-table recap-table">
+        <thead>
+          <tr>
+            <th>Producto</th>
+            {% for pharmacy in recap.pharmacies %}
+              <th>{{ pharmacy }}</th>
+            {% endfor %}
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for product in recap.rows %}
+            <tr>
+              <td>{{ product.name }}</td>
+              {% for pharmacy in recap.pharmacies %}
+                <td class="numeric-cell">{{ product.amounts.get(pharmacy, "0") }}</td>
+              {% endfor %}
+              <td class="numeric-cell row-total">{{ product.total }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="summary-total-row">
+            <th>Total</th>
+            {% for pharmacy in recap.pharmacies %}
+              <th class="numeric-cell">{{ recap.totals.get(pharmacy, "0") }}</th>
+            {% endfor %}
+            <th class="numeric-cell">{{ recap.grand_total }}</th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty summary-empty">Todavia no hay productos seleccionados por las farmacias.</p>
+  {% endif %}
+</section>
+{% endblock %}

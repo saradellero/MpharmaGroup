@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block content %}
+{{ ui.page_header("Reportes", "Balances y estadisticas de pedidos") }}
+
+<section class="block report-filters">
+  <form method="get" class="inline-form">
+    <label>Ejercicio
+      <select class="input" name="year">
+        {% for option in ["2024", "2025", "2026"] %}
+          <option value="{{ option }}" {% if option == year %}selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Almacen
+      <select class="input" name="warehouse">
+        <option value="" {% if not warehouse %}selected{% endif %}>Todos</option>
+        <option value="Principal" {% if warehouse == "Principal" %}selected{% endif %}>Principal</option>
+        <option value="Secundario" {% if warehouse == "Secundario" %}selected{% endif %}>Secundario</option>
+      </select>
+    </label>
+    <button class="btn btn-blue" type="submit">Aplicar</button>
+  </form>
+</section>
+
+<section class="block">
+  <h2>Balance por farmacia para {{ year }}</h2>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Farmacia</th><th>Total soportado</th><th>Total consumido</th><th>Diferencia</th><th></th></tr></thead>
+      <tbody>
+      {% for row in balance %}
+        <tr>
+          <td>{{ row.pharmacist }}</td>
+          <td><a href="{{ url_for('report_detail', report_type='paid', year=year, warehouse=warehouse or '0', user_id=row.user_id) }}">{{ row.supported }}</a></td>
+          <td><a href="{{ url_for('report_detail', report_type='received', year=year, warehouse=warehouse or '0', user_id=row.user_id) }}">{{ row.consumed }}</a></td>
+          <td>{{ row.diff }}</td>
+          <td></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="block">
+  <h2>Estadisticas de pedidos por proveedor para {{ year }}</h2>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Proveedor</th><th>Pedidos</th><th>Cantidad total</th><th>Importe total PPH descontado</th></tr></thead>
+      <tbody>
+      {% for row in labs %}
+        <tr><td>{{ row.supplier }}</td><td>{{ row.orders }}</td><td>{{ row.quantity }}</td><td>{{ row.amount }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

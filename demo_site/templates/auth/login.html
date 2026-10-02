@@ -1,0 +1,25 @@
+{% extends "auth/base.html" %}
+
+{% block auth_content %}
+<form class="auth-form" method="post" action="{{ url_for('login') }}" novalidate>
+  <input type="hidden" name="redirect_url" value="{{ redirect_url }}">
+  <label class="sr-only" for="email">Email</label>
+  <input id="email" class="input" type="email" name="email" placeholder="Email" value="{{ values.email }}">
+  {% if errors.email %}<p class="field-error">{{ errors.email }}</p>{% endif %}
+
+  <label class="sr-only" for="password">Contrasena</label>
+  <input id="password" class="input" type="password" name="password" placeholder="Password">
+  {% if errors.password %}<p class="field-error">{{ errors.password }}</p>{% endif %}
+
+  <label class="check-row">
+    <input type="checkbox" name="remember_me" value="1" {% if values.remember == "1" %}checked{% endif %}>
+    <span></span>
+    <b>Recordarme</b>
+  </label>
+
+  <button class="btn btn-primary auth-submit" type="submit">Entrar</button>
+</form>
+<footer class="auth-footer">
+  <a href="{{ url_for('password_recovery') }}">Olvide mi contrasena</a>
+</footer>
+{% endblock %}

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="{{ language }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ brand.strong }} {{ brand.light }} - {{ title }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body class="auth-page">
+  <main class="auth-shell">
+    <form class="auth-language-switcher language-switcher" method="get" action="{{ url_for('set_language') }}">
+      <label class="sr-only" for="auth-language-select">Idioma</label>
+      <select id="auth-language-select" name="lang" onchange="this.form.submit()" aria-label="Idioma">
+        <option value="es" {% if language == "es" %}selected{% endif %}>Español</option>
+        <option value="fr" {% if language == "fr" %}selected{% endif %}>Français</option>
+      </select>
+      <input type="hidden" name="next" value="{{ request.full_path }}">
+    </form>
+    <div class="auth-split" aria-hidden="true"></div>
+    <section class="auth-panel">
+      <p class="auth-brand"><span class="brand-mark" aria-hidden="true">+</span><span><strong>{{ brand.strong }}</strong> {{ brand.light }}</span></p>
+      {% block auth_content %}{% endblock %}
+    </section>
+  </main>
+</body>
+</html>

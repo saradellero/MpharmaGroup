@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block content %}
+{{ ui.page_header("Pedido: " ~ order_id, "Edicion avanzada del gestor") }}
+{% set new_product_values = new_product_values or {} %}
+<div class="order-detail-layout manager-order-layout">
+  <form id="manager-order-form" method="post" action="{{ url_for('purchaseorder_edit', order_id=order_id, mode='manager') }}" class="order-detail-main">
+    <section class="block form-grid">
+      <h2 class="form-section">Datos del pedido</h2>
+      <label class="form-field">
+        <span>Gestor / farmacia</span>
+        <select class="input" name="owner_id">
+          {% for option in manager_options %}
+            <option value="{{ option.value }}" {% if option.value == order.owner_id %}selected{% endif %}>{{ option.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {{ ui.select_field("warehouse", "Almacen", ["Principal", "Secundario"], order.warehouse) }}
+      {{ ui.input_field("subject", "Objeto", order.subject) }}
+      {{ ui.date_field("deadline", "Fecha limite", order.deadline) }}
+      <label class="form-field">
+        <span>Proveedor</span>
+        <input class="input" name="supplier_id" value="{{ order.supplier }}" autocomplete="off">
+      </label>
+      {{ ui.input_field("contact_id", "Contacto", order.contact) }}
+      <label class="form-field form-field-wide">
+        <span>Condiciones</span>
+        <textarea class="input textarea" name="terms_and_conditions">{{ order.terms_and_conditions }}</textarea>
+      </label>
+    </section>
+
+    <section class="block form-grid">
+      <h2 class="form-section">Pago y entrega</h2>
+      {{ ui.input_field("payment_timeframe", "Plazo de pago", order.payment_timeframe) }}
+      {{ ui.input_field("delivery_timeframe", "Plazo de entrega", order.delivery_timeframe) }}
+      {{ ui.input_field("delivery_transporter", "Transportista", order.delivery_transporter) }}
+      <div class="payment-methods">
+        {% for method in ["cash", "check", "debit_card", "bill_of_exchange", "other"] %}
+          <label><input type="checkbox" name="accepted_payment_methods[]" value="{{ method }}" {% if method in order.payment_methods %}checked{% endif %}> {{ method }}</label>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="block">
+      <h2>Productos del proveedor y cantidades</h2>
+      <p class="bulk-upload__hint">Se muestran todos los productos del proveedor seleccionado. El gestor puede actualizar PPV, PPH, IVA y las cantidades por farmacia antes de guardar.</p>
+      <div class="table-wrap">
+        <table class="data-table editable-table manager-summary-table">
+          <thead>
+            <tr>
+              <th>Producto</th>
+              <th>PPV</th>
+              <th>PPH</th>
+              <th>IVA</th>
+              {% for pharmacy in manager_matrix.pharmacies %}
+                <th>{{ pharmacy }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in manager_matrix.rows %}
+              {% set row_index = loop.index0 %}
+              <tr>
+                <td>
+                  <strong>{{ row.name }}</strong>
+                  <small>{{ row.supplier }}</small>
+                </td>
+                <td>
+                  <input class="input manager-price-input" name="manager_product_ppv_{{ row_index }}" value="{{ row.ppv }}">
+                </td>
+                <td>
+                  <input class="input manager-price-input" name="manager_product_pph_{{ row_index }}" value="{{ row.pph }}">
+                </td>
+                <td>
+                  <input class="input manager-price-input" name="manager_product_tax_{{ row_index }}" value="{{ row.tax }}">
+                </td>
+                {% for pharmacy in manager_matrix.pharmacies %}
+                  <td>
+                    <input class="input manager-quantity-input" type="number" min="0" step="1" name="manager_quantity_{{ row_index }}_{{ loop.index0 }}" value="{{ row.quantities.get(pharmacy, "0") }}">
+                  </td>
+                {% endfor %}
+              </tr>
+            {% else %}
+              <tr><td colspan="{{ manager_matrix.pharmacies|length + 4 }}" class="empty">No hay productos disponibles para el proveedor seleccionado.</td></tr>
+            {% endfor %}
+            <tr class="new-row manager-new-product-row">
+              <td class="manager-new-product-fields">
+                <strong>Nueva linea de producto</strong>
+                <input class="input" name="new_product_name" placeholder="Producto obligatorio" value="{{ new_product_values.get('name', '') }}">
+                <input class="input" name="new_product_barcode" placeholder="Codigo opcional" value="{{ new_product_values.get('barcode', '') }}">
+              </td>
+              <td><input class="input manager-price-input" name="new_product_ppv" placeholder="PPV obligatorio" value="{{ new_product_values.get('ppv', '') }}"></td>
+              <td><input class="input manager-price-input" name="new_product_pph" placeholder="PPH obligatorio" value="{{ new_product_values.get('pph', '') }}"></td>
+              <td><input class="input manager-price-input" name="new_product_tax" placeholder="IVA obligatorio" value="{{ new_product_values.get('tax', '') }}"></td>
+              {% for pharmacy in manager_matrix.pharmacies %}
+                <td>
+                  <input class="input manager-quantity-input" type="number" min="0" step="1" name="manager_new_quantity_{{ loop.index0 }}" value="0">
+                </td>
+              {% endfor %}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="bulk-upload__hint">Para guardar la nueva linea son obligatorios Producto, PPV, PPH e IVA. Las cantidades son opcionales y empiezan en 0.</p>
+      <div class="form-actions">
+        <a class="btn btn-white" href="{{ url_for('purchaseorder_edit', order_id=order_id) }}">Cancelar</a>
+        <button class="btn btn-blue" type="submit">Guardar como gestor</button>
+      </div>
+    </section>
+  </form>
+
+  <aside class="order-side-panel manager-options-panel">
+    <h2>Opciones de gestor</h2>
+    <a class="side-action" href="{{ url_for('purchaseorder_edit', order_id=order_id) }}">Ver resumen</a>
+    <a class="side-action" href="{{ url_for('purchaseorder_invoices', order_id=order_id) }}">Descuentos</a>
+    <a class="side-action" href="{{ url_for('purchaseorder_recap', order_id=order_id) }}">Recapitulacion</a>
+    <a class="side-action" href="{{ url_for('purchaseorder_print', order_id=order_id, scope='all') }}" target="_blank">Imprimir pedido total</a>
+    <form class="manager-side-form" method="get" action="{{ url_for('purchaseorder_edit', order_id=order_id) }}">
+      <input type="hidden" name="mode" value="manager_pharmacy">
+      <label for="manager-pharmacy-select">Modificar una farmacia</label>
+      <select class="input" id="manager-pharmacy-select" name="pharmacy">
+        {% for pharmacy in manager_matrix.pharmacies %}
+          <option value="{{ pharmacy }}">{{ pharmacy }}</option>
+        {% endfor %}
+      </select>
+      <button class="side-action side-action-button" type="submit">Modificar farmacia seleccionada</button>
+    </form>
+    <form class="manager-side-form" method="get" action="{{ url_for('purchaseorder_print', order_id=order_id) }}" target="_blank">
+      <input type="hidden" name="scope" value="pharmacy">
+      <label for="print-pharmacy-select">Imprimir una farmacia</label>
+      <select class="input" id="print-pharmacy-select" name="pharmacy">
+        {% for pharmacy in manager_matrix.pharmacies %}
+          <option value="{{ pharmacy }}">{{ pharmacy }}</option>
+        {% endfor %}
+      </select>
+      <button class="side-action side-action-button" type="submit">Imprimir farmacia seleccionada</button>
+    </form>
+    <p>Este modo permite modificar cantidades de todas las farmacias, los datos del pedido y las condiciones de pago y entrega.</p>
+    <button class="btn btn-blue side-submit" type="submit" form="manager-order-form">Guardar como gestor</button>
+  </aside>
+</div>
+{% endblock %}

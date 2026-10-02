@@ -1,0 +1,8 @@
+{
+  "action": "delete all suppliers",
+  "backup": "data\\nova_groups.before-delete-all-suppliers-20260930-182205.sqlite3",
+  "suppliers_before": 2492,
+  "suppliers_after": 0,
+  "products_untouched": 2499,
+  "supplier_sequence": 0
+}

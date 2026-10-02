@@ -1,0 +1,217 @@
+{% macro icon(name) -%}
+  {# Local Lucide icon subset (ISC) keeps navigation available offline. #}
+  <span class="nav-icon nav-icon-{{ name }}" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      {% if name == "home" %}
+        <path d="m3 11 9-8 9 8"></path>
+        <path d="M5 10v10h14V10"></path>
+        <path d="M9 20v-6h6v6"></path>
+      {% elif name == "truck" %}
+        <path d="M10 17h4V5H2v12h3"></path>
+        <path d="M14 9h4l4 4v4h-3"></path>
+        <circle cx="7.5" cy="17.5" r="2.5"></circle>
+        <circle cx="16.5" cy="17.5" r="2.5"></circle>
+      {% elif name == "box" %}
+        <path d="m7.5 4.3 9 5.2"></path>
+        <path d="M21 8 12 3 3 8v8l9 5 9-5Z"></path>
+        <path d="m3.3 7.7 8.7 5 8.7-5"></path>
+        <path d="M12 22V12.7"></path>
+      {% elif name == "tag" %}
+        <path d="M12.6 2.6H4a2 2 0 0 0-2 2v8.6a2 2 0 0 0 .6 1.4l6.8 6.8a2 2 0 0 0 2.8 0l9.2-9.2a2 2 0 0 0 0-2.8l-6.8-6.8a2 2 0 0 0-1.4-.6Z"></path>
+        <circle cx="7" cy="7" r="1.2"></circle>
+      {% elif name == "file" %}
+        <rect width="16" height="18" x="4" y="3" rx="2"></rect>
+        <path d="M9 8h6"></path>
+        <path d="M9 12h6"></path>
+        <path d="M9 16h4"></path>
+      {% elif name == "calendar" %}
+        <path d="M8 2v4"></path>
+        <path d="M16 2v4"></path>
+        <rect width="18" height="18" x="3" y="4" rx="2"></rect>
+        <path d="M3 10h18"></path>
+        <path d="M8 14h.01"></path>
+        <path d="M12 14h.01"></path>
+        <path d="M16 14h.01"></path>
+        <path d="M8 18h.01"></path>
+        <path d="M12 18h.01"></path>
+      {% elif name == "chart" %}
+        <path d="M3 3v18h18"></path>
+        <path d="M7 16v-3"></path>
+        <path d="M11 16V8"></path>
+        <path d="M15 16v-5"></path>
+        <path d="M19 16V5"></path>
+      {% elif name == "users" %}
+        <path d="M12 6V2"></path>
+        <path d="M10 4h4"></path>
+        <path d="M4 22V10a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12"></path>
+        <path d="M8 22v-4h8v4"></path>
+        <path d="M8 12h.01"></path>
+        <path d="M12 12h.01"></path>
+        <path d="M16 12h.01"></path>
+      {% elif name == "gear" %}
+        <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"></path>
+        <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"></path>
+      {% endif %}
+    </svg>
+  </span>
+{%- endmacro %}
+
+{% macro page_header(title, subtitle=None, action_label=None, action_url=None, secondary_label=None, secondary_url=None) -%}
+<div class="page-header">
+  <div>
+    <h1>{{ title }}</h1>
+    {% if subtitle %}<p>{{ subtitle }}</p>{% endif %}
+  </div>
+  {% if (action_label and action_url) or (secondary_label and secondary_url) %}
+    <div class="page-actions">
+      {% if secondary_label and secondary_url %}
+        <a class="btn btn-white" href="{{ secondary_url }}">{{ secondary_label }}</a>
+      {% endif %}
+      {% if action_label and action_url %}
+        <a class="btn btn-blue" href="{{ action_url }}">{{ action_label }}</a>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro pagination_controls(pagination) -%}
+<div class="pagination" aria-label="Paginacion">
+  <span>
+    {% if pagination.total %}
+      Mostrando {{ pagination.start }}-{{ pagination.end }} de {{ pagination.total }} registros
+    {% else %}
+      0 registros
+    {% endif %}
+  </span>
+  <div class="pagination-actions">
+    {% if pagination.has_prev %}
+      <a class="tool-btn" href="{{ pagination.first_url }}" title="Primera pagina">&lt;&lt;</a>
+      <a class="tool-btn" href="{{ pagination.prev_url }}" title="Pagina anterior">&lt;</a>
+    {% else %}
+      <span class="tool-btn disabled" aria-disabled="true" title="Primera pagina">&lt;&lt;</span>
+      <span class="tool-btn disabled" aria-disabled="true" title="Pagina anterior">&lt;</span>
+    {% endif %}
+    <span class="pagination-current">Pagina {{ pagination.page }} de {{ pagination.total_pages }}</span>
+    {% if pagination.has_next %}
+      <a class="tool-btn" href="{{ pagination.next_url }}" title="Pagina siguiente">&gt;</a>
+      <a class="tool-btn" href="{{ pagination.last_url }}" title="Ultima pagina">&gt;&gt;</a>
+    {% else %}
+      <span class="tool-btn disabled" aria-disabled="true" title="Pagina siguiente">&gt;</span>
+      <span class="tool-btn disabled" aria-disabled="true" title="Ultima pagina">&gt;&gt;</span>
+    {% endif %}
+  </div>
+</div>
+{%- endmacro %}
+
+{% macro render_table(table, rows, table_key, q="", can_edit=false, pagination=None) -%}
+{% set has_row_actions = can_edit and table_key in ["contacts", "purchaseorders"] %}
+<section class="block">
+  <div class="block-toolbar">
+    <form class="search-form" method="get">
+      <input class="input input-search" type="search" name="q" value="{{ q }}" placeholder="Buscar">
+      <button class="tool-btn" type="submit" title="Buscar">?</button>
+      <a class="tool-btn" href="{{ request.path }}" title="Recargar">R</a>
+    </form>
+    <a class="btn btn-white" href="javascript:window.print()">Imprimir</a>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr class="filter-row">
+          {% for key, label in table.columns %}
+            <th><span>contiene</span></th>
+          {% endfor %}
+          {% if has_row_actions %}<th></th>{% endif %}
+        </tr>
+        <tr>
+          {% for key, label in table.columns %}
+            {% set direction = "desc" if request.args.get("sort") == key and request.args.get("direction") != "desc" else "asc" %}
+            <th>
+              <a href="{{ request.path }}?q={{ q }}&sort={{ key }}&direction={{ direction }}">
+                {{ label }} <span class="sort-mark">^</span>
+              </a>
+            </th>
+          {% endfor %}
+          {% if has_row_actions %}<th class="actions-col"></th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            {% for key, label in table.columns %}
+              {% if table_key == "purchaseorders" and key == "number" %}
+                <td><a class="row-action" href="{{ request.path }}?selected_order={{ row.get(key) }}">{{ row.get(key) }}</a></td>
+              {% elif key in ["date", "deadline", "updated", "birthdate"] %}
+                <td>{{ row.get(key)|date_display }}</td>
+              {% else %}
+                <td>{{ row.get(key) }}</td>
+              {% endif %}
+            {% endfor %}
+            {% if can_edit and table_key == "contacts" %}
+              <td><a class="row-action" href="{{ url_for('contact_create') }}">Editar</a></td>
+            {% elif can_edit and table_key == "purchaseorders" %}
+              <td><a class="row-action" href="{{ url_for('purchaseorder_edit', order_id=row.number) }}">Editar</a></td>
+            {% endif %}
+          </tr>
+        {% else %}
+          <tr><td colspan="{{ table.columns|length + (1 if has_row_actions else 0) }}" class="empty">Sin resultados</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if pagination %}{{ pagination_controls(pagination) }}{% endif %}
+</section>
+{%- endmacro %}
+
+{% macro input_field(name, label, value="", type="text", errors=None, readonly=false) -%}
+<label class="form-field">
+  <span>{{ label }}</span>
+  <input class="input" type="{{ type }}" name="{{ name }}" value="{{ value }}" {% if readonly %}readonly{% endif %}>
+  {% if errors and errors.get(name) %}<small class="field-error">{{ errors.get(name) }}</small>{% endif %}
+</label>
+{%- endmacro %}
+
+{% macro date_control(name, value="", readonly=false) -%}
+<div class="date-control{% if readonly %} date-control--readonly{% endif %}" data-date-control>
+  <input
+    class="input date-control__display"
+    type="text"
+    name="{{ name }}"
+    value="{{ value|date_display }}"
+    placeholder="dd/mm/aaaa"
+    inputmode="numeric"
+    autocomplete="off"
+    pattern="(?:0[1-9]|[12][0-9]|3[01])/(?:0[1-9]|1[0-2])/[0-9]{4}"
+    data-date-display
+    {% if readonly %}readonly{% endif %}
+  >
+  {% if not readonly %}
+    <button class="date-control__button" type="button" title="Abrir calendario" aria-label="Abrir calendario" data-date-open>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M8 2v4"></path><path d="M16 2v4"></path><rect width="18" height="18" x="3" y="4" rx="2"></rect><path d="M3 10h18"></path><path d="M8 14h.01"></path><path d="M12 14h.01"></path><path d="M16 14h.01"></path><path d="M8 18h.01"></path><path d="M12 18h.01"></path>
+      </svg>
+    </button>
+    <input class="date-control__picker" type="date" tabindex="-1" aria-hidden="true" data-date-picker>
+  {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro date_field(name, label, value="", errors=None, readonly=false) -%}
+<label class="form-field">
+  <span>{{ label }}</span>
+  {{ date_control(name, value, readonly) }}
+  {% if errors and errors.get(name) %}<small class="field-error">{{ errors.get(name) }}</small>{% endif %}
+</label>
+{%- endmacro %}
+
+{% macro select_field(name, label, options, value="") -%}
+<label class="form-field">
+  <span>{{ label }}</span>
+  <select class="input" name="{{ name }}">
+    {% for option in options %}
+      <option value="{{ option }}" {% if option == value %}selected{% endif %}>{{ option }}</option>
+    {% endfor %}
+  </select>
+</label>
+{%- endmacro %}

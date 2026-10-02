@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block content %}
+{{ ui.page_header("Crear evento", "Informacion del evento") }}
+<form class="block form-grid" method="post">
+  {{ ui.input_field("title", "Titulo") }}
+  {{ ui.input_field("supplier_id", "Proveedor") }}
+  {{ ui.input_field("assigned_to", "Asignado a", values.assigned_to) }}
+  {{ ui.date_field("date", "Fecha", values.date) }}
+  <div class="form-actions">
+    <button class="btn btn-white" name="save_new" value="1" type="submit">Guardar y nuevo</button>
+    <button class="btn btn-blue" type="submit">Guardar</button>
+  </div>
+</form>
+{% endblock %}

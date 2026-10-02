@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="{{ language }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pedido {{ order_id }} - imprimir</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body class="print-page">
+  <main class="print-sheet">
+    <header class="print-header">
+      <div>
+        <strong>{{ brand.strong }} {{ brand.light }}</strong>
+        <h1>{{ print_label }} {{ order_id }}</h1>
+      </div>
+      <button class="btn btn-blue no-print" type="button" onclick="window.print()">Imprimir</button>
+    </header>
+
+    <section class="print-meta">
+      <div><span>Objeto</span><strong>{{ order.subject }}</strong></div>
+      <div><span>Proveedor</span><strong>{{ order.supplier }}</strong></div>
+      <div><span>Fecha limite</span><strong>{{ order.deadline|date_display }}</strong></div>
+    </section>
+
+    <table class="data-table print-table">
+      <thead>
+        <tr>
+          <th>Producto</th>
+          <th>Cantidad</th>
+          <th>PPV</th>
+          <th>PPH TTC</th>
+          <th>IVA</th>
+          <th>Codigo</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for product in products %}
+          <tr>
+            <td>{{ product.name }}</td>
+            <td>{{ product.quantity }}</td>
+            <td>{{ product.sale_price }}</td>
+            <td>{{ product.unit_price }}</td>
+            <td>{{ product.tax }}</td>
+            <td>{{ product.barcode }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="6" class="empty">No hay productos con cantidad 1 o superior.</td></tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        {% if is_total_print %}
+          <tr class="print-total-row print-total-row--accumulated">
+            <th colspan="1">Total pedido (todas las farmacias)</th>
+            <th>{{ accumulated_totals.quantity }}</th>
+            <th>{{ accumulated_totals.ppv }}</th>
+            <th>{{ accumulated_totals.ttc }}</th>
+            <th colspan="2"></th>
+          </tr>
+        {% else %}
+          <tr class="print-total-row">
+            <th colspan="1">Total farmacia (cantidad x precio unitario)</th>
+            <th>{{ pharmacy_totals.quantity }}</th>
+            <th>{{ pharmacy_totals.ppv }}</th>
+            <th>{{ pharmacy_totals.ttc }}</th>
+            <th colspan="2"></th>
+          </tr>
+          <tr class="print-total-row print-total-row--accumulated">
+            <th colspan="1">Total acumulado (cantidad x precio unitario)</th>
+            <th>{{ accumulated_totals.quantity }}</th>
+            <th>{{ accumulated_totals.ppv }}</th>
+            <th>{{ accumulated_totals.ttc }}</th>
+            <th colspan="2"></th>
+          </tr>
+        {% endif %}
+      </tfoot>
+    </table>
+    <p class="print-total-note">Los totales PPV y PPH TTC se calculan multiplicando cada precio por la cantidad solicitada.</p>
+  </main>
+</body>
+</html>

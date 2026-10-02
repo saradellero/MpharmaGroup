@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block content %}
+{{ ui.page_header("Perfil", "Detalles de la cuenta", "Modificar", url_for('edit_profile')) }}
+
+<div class="settings-layout">
+  <nav class="settings-nav">
+    <strong>Mis ajustes</strong>
+    <a class="selected" href="{{ url_for('profile') }}">Perfil</a>
+    <a href="{{ url_for('change_password') }}">Cambiar contrasena</a>
+    <strong>Aplicacion</strong>
+    <a href="#">Historial de conexiones</a>
+  </nav>
+  <section class="block details-grid">
+    <h2>Informacion general</h2>
+    {% for label, key in [("Email", "email"), ("Nombre", "first_name"), ("Apellido", "last_name"), ("Farmacia", "pharmacy_name"), ("Movil", "mobile"), ("Telefono", "phone")] %}
+      <div><span>{{ label }}</span><strong>{{ profile.get(key) }}</strong></div>
+    {% endfor %}
+    <h2>Direccion</h2>
+    {% for label, key in [("Direccion", "address"), ("Ciudad", "city"), ("Pais", "country")] %}
+      <div><span>{{ label }}</span><strong>{{ profile.get(key) }}</strong></div>
+    {% endfor %}
+    <h2>Localizacion</h2>
+    <div><span>Idioma</span><strong>{{ profile.language }}</strong></div>
+    <div><span>Zona horaria</span><strong>{{ profile.time_zone }}</strong></div>
+  </section>
+</div>
+{% endblock %}

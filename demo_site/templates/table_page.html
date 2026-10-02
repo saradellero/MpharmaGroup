@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block content %}
+{% set action_url = url_for(table.create_endpoint) if table.create_endpoint else None %}
+{% set edit_action_label = "Ver listado" if edit_mode else "Editar " ~ table.title|lower %}
+{% set edit_action_url = list_url if edit_mode else edit_url %}
+{{ ui.page_header(
+  table.title,
+  "Listado editable con persistencia SQLite",
+  edit_action_label if can_edit else None,
+  edit_action_url if can_edit else None,
+  "Crear" if action_url and not edit_mode and can_edit else None,
+  action_url if action_url and not edit_mode else None
+) }}
+{% if table_key == "purchaseorders" %}
+  <div class="tabs">
+    <a class="{% if not archived %}selected{% endif %}" href="{{ url_for('purchaseorders') }}">Actuales</a>
+    <a class="{% if archived %}selected{% endif %}" href="{{ url_for('purchaseorders_archived') }}">Archivados</a>
+  </div>
+{% endif %}
+{% if edit_mode %}
+  <section class="block">
+    <form class="bulk-upload bulk-upload-form" method="post" action="{{ list_url }}" enctype="multipart/form-data">
+      <a class="btn btn-white" href="{{ url_for('table_import_template', table_key=table_key) }}">Plantilla Excel</a>
+      <input class="input file-input" type="file" name="excel_file" accept=".xlsx,.xlsm">
+      <button class="btn btn-white" type="submit" name="bulk_action" value="import_excel">Cargar Excel</button>
+      <span class="bulk-upload__hint">Max. {{ upload_limit_label }}</span>
+    </form>
+    <form class="records-edit-form records-edit-form-{{ table_key }}" method="post" action="{{ edit_form_url }}">
+      <div class="edit-toolbar">
+        <button class="btn btn-white" type="button" data-select-toggle>Seleccionar todo</button>
+        <button class="btn btn-danger" type="submit" name="row_action" value="delete_selected">Eliminar seleccionados</button>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table editable-table records-edit-table">
+          <thead>
+            <tr>
+              <th class="select-col"></th>
+              {% for key, label in table.columns %}
+                <th>{{ label }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              <tr>
+                <input type="hidden" name="record_id" value="{{ row.id }}">
+                <td class="row-select-cell">
+                  <input class="row-select-checkbox" type="checkbox" name="selected_record_id" value="{{ row.id }}" aria-label="Seleccionar fila {{ loop.index }}">
+                </td>
+                {% for field in hidden_fields %}
+                  <input type="hidden" name="record_{{ row.id }}_{{ field }}" value="{{ row.get(field, '') }}">
+                {% endfor %}
+                {% for key, label in table.columns %}
+                  <td>
+                    {% set suggestion_list = none %}
+                    {% if table_key == "suppliers" and key == "name" %}
+                      {% set suggestion_list = "supplier-name-options" %}
+                    {% elif table_key == "products" and key == "supplier" %}
+                      {% set suggestion_list = "product-supplier-options" %}
+                    {% elif table_key == "products" and key == "name" %}
+                      {% set suggestion_list = "product-name-options" %}
+                    {% endif %}
+                    {% if key in ['date', 'deadline', 'updated', 'birthdate'] %}
+                      {{ ui.date_control("record_" ~ row.id ~ "_" ~ key, row.get(key, '')) }}
+                    {% else %}
+                      <input class="input" type="text" name="record_{{ row.id }}_{{ key }}" value="{{ row.get(key, '') }}"{% if suggestion_list %} list="{{ suggestion_list }}" autocomplete="off"{% endif %}>
+                    {% endif %}
+                  </td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+            <tr class="new-row">
+              <td class="row-select-cell"></td>
+              {% for key, label in table.columns %}
+                <td>
+                  {% set suggestion_list = none %}
+                  {% if table_key == "suppliers" and key == "name" %}
+                    {% set suggestion_list = "supplier-name-options" %}
+                  {% elif table_key == "products" and key == "supplier" %}
+                    {% set suggestion_list = "product-supplier-options" %}
+                  {% elif table_key == "products" and key == "name" %}
+                    {% set suggestion_list = "product-name-options" %}
+                  {% endif %}
+                  {% if key in ['date', 'deadline', 'updated', 'birthdate'] %}
+                    {{ ui.date_control("new_" ~ key) }}
+                  {% else %}
+                    <input class="input" type="text" name="new_{{ key }}" placeholder="{{ 'Nuevo registro' if loop.first else label }}"{% if suggestion_list %} list="{{ suggestion_list }}" autocomplete="off"{% endif %}>
+                  {% endif %}
+                </td>
+              {% endfor %}
+              {% for field in hidden_fields %}
+                <input type="hidden" name="new_{{ field }}" value="{{ '1' if archived else '0' }}">
+              {% endfor %}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="form-actions">
+        <a class="btn btn-white" href="{{ list_url }}">Cancelar</a>
+        <button class="btn btn-blue" type="submit">Guardar cambios</button>
+      </div>
+    </form>
+    {% if table_key == "suppliers" %}
+      <datalist id="supplier-name-options">
+        {% for suggestion in supplier_suggestions %}
+          <option value="{{ suggestion }}"></option>
+        {% endfor %}
+      </datalist>
+    {% elif table_key == "products" %}
+      <datalist id="product-supplier-options">
+        {% for suggestion in supplier_suggestions %}
+          <option value="{{ suggestion }}"></option>
+        {% endfor %}
+      </datalist>
+      <datalist id="product-name-options">
+        {% for suggestion in product_suggestions %}
+          <option value="{{ suggestion }}"></option>
+        {% endfor %}
+      </datalist>
+    {% endif %}
+    {{ ui.pagination_controls(pagination) }}
+  </section>
+{% else %}
+  {{ ui.render_table(table, rows, table_key, q, can_edit, pagination) }}
+  {% if order_summary %}
+    <section class="block order-summary-block">
+      <div class="summary-heading">
+        <div>
+          <h2>Resumen por farmacia</h2>
+          <p>Pedido {{ order_summary.order_number }}</p>
+        </div>
+      </div>
+      {% if order_summary.rows %}
+        <div class="table-wrap order-summary-wrap">
+          <table class="data-table order-summary-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                {% for pharmacy in order_summary.pharmacies %}
+                  <th>{{ pharmacy }}</th>
+                {% endfor %}
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for product in order_summary.rows %}
+                <tr>
+                  <td>{{ product.name }}</td>
+                  {% for pharmacy in order_summary.pharmacies %}
+                    <td class="numeric-cell">{{ product.quantities.get(pharmacy, "") }}</td>
+                  {% endfor %}
+                  <td class="numeric-cell row-total">{{ product.total }}</td>
+                </tr>
+              {% endfor %}
+              <tr class="summary-total-row">
+                <th>Total</th>
+                {% for pharmacy in order_summary.pharmacies %}
+                  <th class="numeric-cell">{{ order_summary.totals.get(pharmacy, "") }}</th>
+                {% endfor %}
+                <th class="numeric-cell">{{ order_summary.grand_total }}</th>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="empty summary-empty">No hay productos seleccionados por farmacias para este pedido.</p>
+      {% endif %}
+    </section>
+  {% endif %}
+{% endif %}
+{% if edit_mode %}
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      document.querySelectorAll(".records-edit-form").forEach(function (form) {
+        var toggle = form.querySelector("[data-select-toggle]");
+        var checkboxes = Array.from(form.querySelectorAll(".row-select-checkbox"));
+        if (!toggle || !checkboxes.length) {
+          return;
+        }
+
+        function updateToggle() {
+          var allSelected = checkboxes.every(function (checkbox) {
+            return checkbox.checked;
+          });
+          toggle.textContent = allSelected ? "Deseleccionar todo" : "Seleccionar todo";
+          toggle.setAttribute("aria-pressed", allSelected ? "true" : "false");
+        }
+
+        toggle.addEventListener("click", function () {
+          var shouldSelect = !checkboxes.every(function (checkbox) {
+            return checkbox.checked;
+          });
+          checkboxes.forEach(function (checkbox) {
+            checkbox.checked = shouldSelect;
+          });
+          updateToggle();
+        });
+
+        checkboxes.forEach(function (checkbox) {
+          checkbox.addEventListener("change", updateToggle);
+        });
+        updateToggle();
+      });
+    });
+  </script>
+{% endif %}
+{% endblock %}

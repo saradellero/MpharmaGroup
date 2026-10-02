@@ -1,0 +1,24 @@
+Traceback (most recent call last):
+  File "C:\Users\abdsalas\OneDrive - NTT DATA EMEAL\Documents\sobrus\app.py", line 1, in <module>
+    from demo_site.app import create_app, main
+  File "C:\Users\abdsalas\OneDrive - NTT DATA EMEAL\Documents\sobrus\demo_site\app.py", line 7, in <module>
+    from flask import (
+    ...<8 lines>...
+    )
+  File "C:\Users\abdsalas\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\flask\__init__.py", line 6, in <module>
+    from .app import Flask as Flask
+  File "C:\Users\abdsalas\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\flask\app.py", line 14, in <module>
+    import click
+  File "C:\Users\abdsalas\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\click\__init__.py", line 10, in <module>
+    from .core import Argument as Argument
+  File "C:\Users\abdsalas\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\click\core.py", line 23, in <module>
+    from . import types
+  File "C:\Users\abdsalas\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\click\types.py", line 15, in <module>
+    from ._compat import _get_argv_encoding
+  File "C:\Users\abdsalas\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\click\_compat.py", line 518, in <module>
+    from ._winconsole import _get_windows_console_stream
+  File "C:\Users\abdsalas\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\click\_winconsole.py", line 16, in <module>
+    from ctypes import Array
+  File "C:\Users\abdsalas\AppData\Local\Python\pythoncore-3.14-64\Lib\ctypes\__init__.py", line 10, in <module>
+    from _ctypes import Union, Structure, Array
+ImportError: DLL load failed while importing _ctypes: An internal error occurred.

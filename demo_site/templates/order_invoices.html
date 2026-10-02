@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block content %}
+{{ ui.page_header(
+  "Facturas del pedido " ~ order_id,
+  "Productos seleccionados y condiciones de facturacion",
+  "Volver al gestor",
+  url_for("purchaseorder_edit", order_id=order_id, mode="manager")
+) }}
+
+<section class="block invoice-block">
+  <div class="block-toolbar">
+    <div>
+      <strong>{{ order.supplier or "Sin proveedor" }}</strong>
+      <span class="invoice-toolbar-note">Pedido {{ order_id }}</span>
+    </div>
+    <button class="btn btn-white no-print" type="button" onclick="window.print()">Imprimir</button>
+  </div>
+
+  <p class="invoice-formula-note">
+    Descuento % = (PPH descontado / PPH - 1) x 100. Al introducir U.G %, el PPH descontado se calcula como PPH x (1 + U.G % / 100).
+  </p>
+
+  <form id="invoice-form" method="post" action="{{ url_for('purchaseorder_invoices', order_id=order_id) }}">
+    <div class="table-wrap">
+      <table class="data-table invoice-table" data-invoice-table>
+      <thead>
+        <tr>
+          <th>Producto</th>
+          <th>PPV</th>
+          <th>PPH</th>
+          <th>IVA</th>
+          <th>Descuento %</th>
+          <th>U.G %</th>
+          <th>PPH descontado</th>
+          <th>Cantidad total</th>
+          <th>Total PPH descontado</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for product in products %}
+          {% set invoice_values = product.invoice or {} %}
+          <tr data-invoice-row>
+            <td>{{ product.name }}</td>
+            <td>{{ product.sale_price }}</td>
+            <td><span data-field="pph">{{ product.unit_price }}</span></td>
+            <td>{{ product.tax }}</td>
+            <td>
+              <input class="input invoice-input" type="text" inputmode="decimal" data-field="discount" name="invoice_discount_{{ loop.index0 }}" value="{{ invoice_values.get('discount_pct', '') }}" aria-label="Descuento de {{ product.name }}" readonly>
+            </td>
+            <td>
+              <input class="input invoice-input" type="text" inputmode="decimal" data-field="ug" name="invoice_ug_{{ loop.index0 }}" value="{{ invoice_values.get('ug_pct', '') }}" aria-label="U.G de {{ product.name }}">
+            </td>
+            <td>
+              <input class="input invoice-input" type="text" inputmode="decimal" data-field="pph-discounted" name="invoice_pph_discounted_{{ loop.index0 }}" value="{{ invoice_values.get('pph_discounted', '') }}" aria-label="PPH descontado de {{ product.name }}">
+            </td>
+            <td class="numeric-cell" data-field="quantity">{{ product.quantity }}</td>
+            <td class="numeric-cell" data-field="line-total">-</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="9" class="empty">No hay productos seleccionados en este pedido.</td></tr>
+        {% endfor %}
+      </tbody>
+      {% if products %}
+        <tfoot>
+          <tr class="invoice-total-row">
+            <th colspan="7">Totales</th>
+            <th class="numeric-cell" data-total="quantity">{{ quantity_total }}</th>
+            <th class="numeric-cell" data-total="amount">0</th>
+          </tr>
+        </tfoot>
+      {% endif %}
+      </table>
+    </div>
+    <div class="form-actions invoice-actions">
+      <a class="btn btn-white" href="{{ url_for('purchaseorder_edit', order_id=order_id, mode='manager') }}">Cancelar</a>
+      <button class="btn btn-blue" type="submit">Guardar factura</button>
+    </div>
+  </form>
+</section>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    function parseNumber(value) {
+      var normalized = String(value || "").replace(/\s/g, "").replace(",", ".");
+      if (!normalized) {
+        return null;
+      }
+      var number = Number(normalized);
+      return Number.isFinite(number) ? number : null;
+    }
+
+    function formatNumber(value) {
+      return value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "").replace(".", ",");
+    }
+
+    var table = document.querySelector("[data-invoice-table]");
+    if (!table) {
+      return;
+    }
+
+    function updateTotals() {
+      var amount = 0;
+      table.querySelectorAll('[data-field="line-total"]').forEach(function (cell) {
+        var value = parseNumber(cell.textContent);
+        if (value !== null) {
+          amount += value;
+        }
+      });
+      var totalAmount = table.querySelector('[data-total="amount"]');
+      if (totalAmount) {
+        totalAmount.textContent = formatNumber(amount);
+      }
+    }
+
+    table.querySelectorAll("[data-invoice-row]").forEach(function (row) {
+      var pph = row.querySelector('[data-field="pph"]');
+      var discount = row.querySelector('[data-field="discount"]');
+      var ug = row.querySelector('[data-field="ug"]');
+      var discountedPph = row.querySelector('[data-field="pph-discounted"]');
+      var quantity = row.querySelector('[data-field="quantity"]');
+      var lineTotal = row.querySelector('[data-field="line-total"]');
+
+      function updateLineTotal() {
+        var discountedValue = parseNumber(discountedPph.value);
+        var quantityValue = parseNumber(quantity.textContent);
+        if (discountedValue === null || quantityValue === null) {
+          lineTotal.textContent = "-";
+          updateTotals();
+          return;
+        }
+        lineTotal.textContent = formatNumber(discountedValue * quantityValue);
+        updateTotals();
+      }
+
+      function updateDiscount() {
+        var pphValue = parseNumber(pph.textContent);
+        var discountedValue = parseNumber(discountedPph.value);
+        if (pphValue === null || pphValue === 0 || discountedValue === null) {
+          discount.value = "";
+        } else {
+          discount.value = formatNumber(((discountedValue / pphValue) - 1) * 100);
+        }
+        updateLineTotal();
+      }
+
+      function updateDiscountedPph() {
+        var pphValue = parseNumber(pph.textContent);
+        var ugValue = parseNumber(ug.value);
+        if (pphValue === null || ugValue === null) {
+          return;
+        }
+        discountedPph.value = formatNumber(pphValue * (1 + (ugValue / 100)));
+        updateDiscount();
+      }
+
+      discountedPph.addEventListener("input", updateDiscount);
+      ug.addEventListener("input", updateDiscountedPph);
+      if (discountedPph.value.trim()) {
+        updateDiscount();
+      } else if (ug.value.trim()) {
+        updateDiscountedPph();
+      }
+    });
+    updateTotals();
+  });
+</script>
+{% endblock %}

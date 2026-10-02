@@ -1,0 +1,18 @@
+{% extends "base.html" if session.get("authenticated") else "auth/base.html" %}
+
+{% block content %}
+<section class="block not-found">
+  <div class="not-found-icon" aria-hidden="true"></div>
+  <h1>Error 404</h1>
+  <p>La ruta {{ path }} no esta disponible en la demo.</p>
+  <a class="btn btn-blue" href="{{ url_for('dashboard') }}">Volver al inicio</a>
+</section>
+{% endblock %}
+
+{% block auth_content %}
+<div class="auth-copy">
+  <h1>Error 404</h1>
+  <p>La ruta {{ path }} no esta disponible en la demo.</p>
+  <a class="btn btn-primary auth-submit" href="{{ url_for('login') }}">Volver al acceso</a>
+</div>
+{% endblock %}

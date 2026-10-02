@@ -1,0 +1,20 @@
+{% extends "auth/base.html" %}
+
+{% block auth_content %}
+<div class="auth-copy">
+  <h1>Recuperar acceso</h1>
+  <p>Escribe tu correo y prepararemos instrucciones de recuperacion para esta demo.</p>
+</div>
+{% if sent %}
+  <div class="notice success">Solicitud registrada en modo demo.</div>
+{% endif %}
+<form class="auth-form" method="post" action="{{ url_for('password_recovery') }}" novalidate>
+  <label class="sr-only" for="email">Email</label>
+  <input id="email" class="input" type="email" name="email" placeholder="Email" value="{{ values.email }}">
+  {% if errors.email %}<p class="field-error">{{ errors.email }}</p>{% endif %}
+  <button class="btn btn-primary auth-submit" type="submit">Enviar instrucciones</button>
+</form>
+<footer class="auth-footer">
+  <a href="mailto:support@example.com">Contactar soporte</a>
+</footer>
+{% endblock %}
