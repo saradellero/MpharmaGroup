@@ -761,15 +761,20 @@ textarea {
 }
 
 .select-col {
-  width: 48px;
+  width: 28px;
+  padding-right: 5px !important;
+  padding-left: 5px !important;
 }
 
 .row-select-cell {
   text-align: center !important;
   vertical-align: middle !important;
+  padding-right: 5px !important;
+  padding-left: 5px !important;
 }
 
 .row-select-checkbox {
+  min-width: 0 !important;
   width: 18px;
   height: 18px;
   accent-color: var(--teal);
@@ -793,6 +798,24 @@ textarea {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+.pagination-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.pagination-size select {
+  min-height: 32px;
+  padding: 0 24px 0 8px;
+  color: var(--text);
+  font: inherit;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
 }
 
 .pagination-current {
@@ -874,6 +897,64 @@ textarea {
   display: grid;
   gap: 4px;
   font-weight: 700;
+}
+
+.report-detail-block {
+  overflow: hidden;
+}
+
+.report-opening-form {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #f7fbfb;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.report-opening-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px 12px;
+}
+
+.report-opening-form .form-field {
+  gap: 4px;
+}
+
+.report-detail-table {
+  min-width: max-content;
+}
+
+.report-detail-table th,
+.report-detail-table td {
+  white-space: nowrap;
+}
+
+.report-detail-table td:nth-child(n + 4) {
+  text-align: right;
+}
+
+.report-detail-table .report-opening-row td {
+  color: var(--navy);
+  background: #fff9d9;
+  font-weight: 700;
+}
+
+.report-detail-table .report-total-row td {
+  color: #fff;
+  background: #e21b16;
+  font-weight: 800;
+}
+
+.report-detail-table .report-negative {
+  color: #e21b16;
+  font-weight: 800;
+}
+
+.report-detail-table .report-total-row .report-negative {
+  color: #fff;
 }
 
 .form-grid {
@@ -1449,9 +1530,16 @@ textarea {
   .stats-grid,
   .dashboard-grid,
   .form-grid,
+  .order-detail-layout,
   .settings-layout,
   .details-grid {
     grid-template-columns: 1fr;
+  }
+
+  .order-side-panel {
+    position: static;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   .block {

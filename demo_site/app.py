@@ -20,7 +20,13 @@ from flask import (
 )
 from werkzeug.exceptions import RequestEntityTooLarge
 
-from .auth import authenticate_user, can_edit_table, is_admin_user, visible_nav_items
+from .auth import (
+    authenticate_user,
+    can_edit_table,
+    is_admin_record,
+    is_admin_user,
+    visible_nav_items,
+)
 from .data import (
     BRAND,
     CALENDAR_EVENTS,
@@ -42,10 +48,12 @@ from .storage import (
     get_record_fields,
     list_invoice_products,
     list_order_products,
+    list_report_opening_balances,
     list_records,
     replace_order_products,
     save_invoice_products,
     save_order_products,
+    save_report_opening_balances,
     save_records,
     update_purchase_order,
     update_user_password,
@@ -55,6 +63,7 @@ DEFAULT_UPLOAD_LIMIT_BYTES = 64 * 1024 * 1024
 DEFAULT_FORM_MEMORY_LIMIT_BYTES = 64 * 1024 * 1024
 DEFAULT_FORM_PARTS_LIMIT = 50000
 TABLE_PAGE_SIZE = 25
+TABLE_PAGE_SIZES = (25, 50, 100)
 EDITABLE_ROUTE_PATHS = {
     "/suppliers",
     "/contacts",
@@ -69,6 +78,7 @@ EDITABLE_ROUTE_PATHS = {
 def create_app(config: dict[str, object] | None = None) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="../static")
     app.jinja_env.filters["date_display"] = format_date_for_display
+    app.jinja_env.filters["price2"] = format_price
     app.config["SECRET_KEY"] = "dev-demo-secret-key"
     if config:
         app.config.update(config)
@@ -266,6 +276,11 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             table_key,
             archived=archived if table_key == "purchaseorders" else None,
         )
+        if table_key == "users" and not table_can_edit:
+            rows = [
+                {key: value for key, value in row.items() if key != "password"}
+                for row in rows
+            ]
         q = request.args.get("q", "").strip().lower()
         if q:
             rows = [
@@ -384,11 +399,32 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             can_edit=is_admin_user(session.get("user")),
         )
 
-    @app.route("/reports")
+    @app.route("/reports", methods=["GET", "POST"])
     @login_required
     def reports() -> object:
-        year = request.args.get("year", "2026").strip() or "2026"
-        warehouse = normalize_report_warehouse(request.args.get("warehouse", ""))
+        filters = request.form if request.method == "POST" else request.args
+        year = filters.get("year", "2026").strip() or "2026"
+        warehouse = normalize_report_warehouse(filters.get("warehouse", ""))
+        if request.method == "POST":
+            if not is_admin_user(session.get("user")):
+                abort(403)
+            opening_pharmacies = request.form.getlist("opening_pharmacy")
+            opening_values = request.form.getlist("opening_balance")
+            opening_balances: dict[str, str] = {}
+            for pharmacy, raw_value in zip(opening_pharmacies, opening_values):
+                value = str(raw_value).strip()
+                if value and parse_optional_number(value) is None:
+                    flash(
+                        f"El saldo inicial de {pharmacy} no es un importe valido.",
+                        "error",
+                    )
+                    return redirect(url_for("reports", year=year, warehouse=warehouse))
+                opening_balances[str(pharmacy).strip()] = value
+            save_report_opening_balances(opening_balances)
+            flash("Saldo inicial acumulado guardado.", "success")
+            return redirect(url_for("reports", year=year, warehouse=warehouse))
+
+        opening_balances = list_report_opening_balances()
         return render_template(
             "reports.html",
             title="Reportes",
@@ -396,6 +432,9 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             year=year,
             warehouse=warehouse,
             balance=build_report_balance(year, warehouse),
+            report_detail=build_report_detail(year, warehouse, opening_balances),
+            opening_balances=opening_balances,
+            can_edit_reports=is_admin_user(session.get("user")),
             labs=build_report_labs(year, warehouse),
         )
 
@@ -912,15 +951,23 @@ def apply_request_limits(app: Flask, config: dict[str, object]) -> None:
 
 def paginate_rows(rows: list[dict[str, object]]) -> tuple[list[dict[str, object]], dict[str, object]]:
     total = len(rows)
-    total_pages = max(1, ceil(total / TABLE_PAGE_SIZE))
+    requested_page_size = request.args.get("per_page", str(TABLE_PAGE_SIZE))
+    try:
+        per_page = int(requested_page_size)
+    except ValueError:
+        per_page = TABLE_PAGE_SIZE
+    if per_page not in TABLE_PAGE_SIZES:
+        per_page = TABLE_PAGE_SIZE
+
+    total_pages = max(1, ceil(total / per_page))
     requested_page = request.args.get("page", "1")
     try:
         current_page = int(requested_page)
     except ValueError:
         current_page = 1
     current_page = min(max(current_page, 1), total_pages)
-    start = (current_page - 1) * TABLE_PAGE_SIZE
-    end = min(start + TABLE_PAGE_SIZE, total)
+    start = (current_page - 1) * per_page
+    end = min(start + per_page, total)
 
     def page_url(page: int) -> str:
         args = request.args.to_dict(flat=True)
@@ -928,12 +975,18 @@ def paginate_rows(rows: list[dict[str, object]]) -> tuple[list[dict[str, object]
             args.pop("page", None)
         else:
             args["page"] = str(page)
+        if per_page == TABLE_PAGE_SIZE:
+            args.pop("per_page", None)
+        else:
+            args["per_page"] = str(per_page)
         query = urlencode(args)
         return f"{request.path}?{query}" if query else request.path
 
     pagination = {
         "page": current_page,
-        "per_page": TABLE_PAGE_SIZE,
+        "per_page": per_page,
+        "per_page_options": TABLE_PAGE_SIZES,
+        "show_size_selector": total > TABLE_PAGE_SIZE,
         "total": total,
         "total_pages": total_pages,
         "start": start + 1 if total else 0,
@@ -1126,6 +1179,198 @@ def report_orders(year: str, warehouse: str) -> list[dict[str, object]]:
     ]
 
 
+def report_order_matches_warehouse(
+    order: dict[str, object],
+    warehouse: str,
+) -> bool:
+    selected_warehouse = normalize_report_warehouse(warehouse)
+    return not selected_warehouse or str(order.get("warehouse", "")).strip() == selected_warehouse
+
+
+def report_order_pharmacy_amounts(order: dict[str, object]) -> dict[str, float]:
+    order_id = str(order.get("number", "")).strip()
+    invoice_values = report_invoice_values(order_id)
+    excluded_pharmacies = report_admin_identity_values()
+    amounts: dict[str, float] = {}
+    for product in list_order_products(order_id):
+        pharmacy = str(product.get("pharmacy", "")).strip()
+        quantity = parse_quantity(product.get("quantity", ""))
+        if not pharmacy or pharmacy in excluded_pharmacies or quantity <= 0:
+            continue
+        amounts[pharmacy] = amounts.get(pharmacy, 0.0) + (
+            quantity * report_line_pph_discounted(product, invoice_values)
+        )
+    return amounts
+
+
+def report_admin_identity_values() -> set[str]:
+    values: set[str] = set()
+    for user in list_records("users"):
+        if not is_admin_record(user):
+            continue
+        values.update(
+            value
+            for value in (
+                str(user.get("pharmacy", "")).strip(),
+                " ".join(
+                    part
+                    for part in (
+                        str(user.get("first_name", "")).strip(),
+                        str(user.get("last_name", "")).strip(),
+                    )
+                    if part
+                ),
+                str(user.get("email", "")).strip(),
+            )
+            if value
+        )
+    return values
+
+
+def report_pharmacy_names(orders: list[dict[str, object]]) -> list[str]:
+    pharmacies: list[str] = []
+    for user in list_records("users"):
+        if is_admin_record(user):
+            continue
+        pharmacy = str(user.get("pharmacy", "")).strip()
+        if pharmacy and pharmacy not in pharmacies:
+            pharmacies.append(pharmacy)
+    for order in orders:
+        for pharmacy in report_order_pharmacy_amounts(order):
+            if pharmacy not in pharmacies:
+                pharmacies.append(pharmacy)
+    return pharmacies
+
+
+def report_detail_number(value: float, blank_zero: bool = True) -> str:
+    if blank_zero and abs(value) < 0.005:
+        return ""
+    formatted = f"{abs(value):,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+    return f"{'-' if value < 0 else ''}{formatted}"
+
+
+def report_detail_cell(value: float, blank_zero: bool = True) -> dict[str, object]:
+    return {
+        "value": value,
+        "display": report_detail_number(value, blank_zero=blank_zero),
+        "negative": value < -0.005,
+    }
+
+
+def build_report_detail(
+    year: str,
+    warehouse: str,
+    opening_balances: dict[str, str],
+) -> dict[str, object]:
+    admin_values = report_admin_identity_values()
+    opening_balances = {
+        pharmacy: amount
+        for pharmacy, amount in opening_balances.items()
+        if pharmacy not in admin_values
+    }
+    selected_year = str(year).strip()
+    try:
+        selected_year_number = int(selected_year)
+    except ValueError:
+        selected_year_number = 0
+
+    relevant_orders = [
+        order
+        for order in list_records("purchaseorders")
+        if report_order_matches_warehouse(order, warehouse)
+        and report_order_year(order)
+    ]
+    selected_orders = [
+        order for order in relevant_orders if report_order_year(order) == selected_year
+    ]
+    previous_orders = [
+        order
+        for order in relevant_orders
+        if selected_year_number
+        and report_order_year(order).isdigit()
+        and int(report_order_year(order)) < selected_year_number
+    ]
+
+    pharmacies = report_pharmacy_names(relevant_orders)
+    for pharmacy in opening_balances:
+        if pharmacy not in pharmacies:
+            pharmacies.append(pharmacy)
+
+    carried_values = {
+        pharmacy: parse_optional_number(opening_balances.get(pharmacy, "")) or 0.0
+        for pharmacy in pharmacies
+    }
+    for order in previous_orders:
+        for pharmacy, amount in report_order_pharmacy_amounts(order).items():
+            carried_values.setdefault(pharmacy, 0.0)
+            carried_values[pharmacy] += amount
+
+    rows: list[dict[str, object]] = []
+    current_values = {pharmacy: 0.0 for pharmacy in pharmacies}
+    for order in selected_orders:
+        amounts = report_order_pharmacy_amounts(order)
+        for pharmacy in amounts:
+            if pharmacy not in current_values:
+                pharmacies.append(pharmacy)
+                current_values[pharmacy] = 0.0
+                carried_values[pharmacy] = 0.0
+        for pharmacy, amount in amounts.items():
+            current_values[pharmacy] += amount
+        pph_remised = report_order_amount(str(order.get("number", "")))
+        row_total = sum(amounts.values())
+        rows.append(
+            {
+                "number": str(order.get("number", "")).strip(),
+                "date": str(order.get("deadline", "")).strip()
+                or str(order.get("updated", "")).strip(),
+                "supplier": str(order.get("supplier", "")).strip(),
+                "pph_remised": report_detail_cell(pph_remised),
+                "pharmacy_values": {
+                    pharmacy: report_detail_cell(amounts.get(pharmacy, 0.0))
+                    for pharmacy in pharmacies
+                },
+                "total": report_detail_cell(row_total),
+                "g_labo": report_detail_cell(pph_remised - row_total),
+            }
+        )
+
+    carried_total = sum(carried_values.values())
+    accumulated_values = {
+        pharmacy: carried_values.get(pharmacy, 0.0)
+        + current_values.get(pharmacy, 0.0)
+        for pharmacy in pharmacies
+    }
+    accumulated_total = sum(accumulated_values.values())
+    return {
+        "pharmacies": pharmacies,
+        "rows": rows,
+        "opening_row": {
+            "pph_remised": report_detail_cell(carried_total),
+            "pharmacy_values": {
+                pharmacy: report_detail_cell(carried_values.get(pharmacy, 0.0))
+                for pharmacy in pharmacies
+            },
+            "total": report_detail_cell(carried_total),
+            "g_labo": report_detail_cell(0.0),
+        },
+        "totals": {
+            "pph_remised": report_detail_cell(
+                sum(row["pph_remised"]["value"] for row in rows) + carried_total
+            ),
+            "pharmacy_values": {
+                pharmacy: report_detail_cell(accumulated_values.get(pharmacy, 0.0))
+                for pharmacy in pharmacies
+            },
+            "total": report_detail_cell(accumulated_total),
+            "g_labo": report_detail_cell(
+                sum(row["pph_remised"]["value"] for row in rows)
+                + carried_total
+                - accumulated_total
+            ),
+        },
+    }
+
+
 def report_invoice_values(order_id: str) -> dict[str, dict[str, object]]:
     return {
         invoice_product_key(row): row
@@ -1150,10 +1395,15 @@ def report_order_amount(
 ) -> float:
     products = list_order_products(str(order_id))
     invoice_values = report_invoice_values(order_id)
+    excluded_pharmacies = report_admin_identity_values()
     total = 0.0
     for product in products:
         pharmacy = str(product.get("pharmacy", "")).strip()
-        if not pharmacy or (pharmacies is not None and pharmacy not in pharmacies):
+        if (
+            not pharmacy
+            or pharmacy in excluded_pharmacies
+            or (pharmacies is not None and pharmacy not in pharmacies)
+        ):
             continue
         quantity = parse_quantity(product.get("quantity", ""))
         if quantity <= 0:
@@ -1203,7 +1453,10 @@ def build_report_balance(year: str, warehouse: str) -> list[dict[str, str]]:
     orders = report_orders(year, warehouse)
     entries: list[dict[str, object]] = []
     seen_labels: set[str] = set()
+    admin_values = report_admin_identity_values()
     for user in list_records("users"):
+        if is_admin_record(user):
+            continue
         user_id = str(user.get("id", "")).strip()
         identity = report_user_identity(user_id)
         label = str(identity.get("label", "")).strip()
@@ -1214,7 +1467,7 @@ def build_report_balance(year: str, warehouse: str) -> list[dict[str, str]]:
 
     for order in orders:
         manager = str(order.get("manager", "")).strip()
-        if not manager or any(
+        if not manager or manager in admin_values or any(
             manager in entry.get("manager_values", set()) for entry in entries
         ):
             continue
@@ -1256,12 +1509,14 @@ def build_report_balance(year: str, warehouse: str) -> list[dict[str, str]]:
 
 
 def build_report_labs(year: str, warehouse: str) -> list[dict[str, object]]:
+    excluded_pharmacies = report_admin_identity_values()
     totals: dict[str, dict[str, object]] = {}
     for order in report_orders(year, warehouse):
         order_id = str(order.get("number", "")).strip()
         invoice_values = report_invoice_values(order_id)
         for product in list_order_products(order_id):
-            if not str(product.get("pharmacy", "")).strip():
+            pharmacy = str(product.get("pharmacy", "")).strip()
+            if not pharmacy or pharmacy in excluded_pharmacies:
                 continue
             quantity = parse_quantity(product.get("quantity", ""))
             if quantity <= 0:
@@ -1398,8 +1653,8 @@ def build_order_manager_matrix(order_id: str) -> dict[str, object]:
                 "id": str(product.get("id", product.get("product_id", ""))).strip(),
                 "name": str(product.get("name", "")).strip(),
                 "supplier": str(product.get("supplier", "")).strip(),
-                "ppv": str(product.get("ppv", product.get("sale_price", ""))).strip(),
-                "pph": str(product.get("pph", product.get("unit_price", ""))).strip(),
+                "ppv": format_price(product.get("ppv", product.get("sale_price", ""))),
+                "pph": format_price(product.get("pph", product.get("unit_price", ""))),
                 "tax": str(product.get("tax", "")).strip(),
                 "barcode": str(product.get("barcode", "")).strip(),
                 "quantities": {pharmacy_name: "0" for pharmacy_name in pharmacies},
@@ -1461,8 +1716,8 @@ def manager_product_values_from_form(
         "id": str(row.get("id", "")).strip(),
         "supplier": str(row.get("supplier", "")).strip(),
         "name": str(row.get("name", "")).strip(),
-        "ppv": str(row.get("ppv", "")).strip(),
-        "pph": str(row.get("pph", "")).strip(),
+        "ppv": format_price(row.get("ppv", "")),
+        "pph": format_price(row.get("pph", "")),
         "tax": str(row.get("tax", "")).strip(),
         "barcode": str(row.get("barcode", "")).strip(),
     }
@@ -1565,8 +1820,8 @@ def build_order_totals(
     total_ttc = round(total_ttc, 2)
     return {
         "quantity": format_quantity(total_quantity) if total_quantity else "0",
-        "ppv": format_quantity(total_ppv) if total_ppv else "0",
-        "ttc": format_quantity(total_ttc) if total_ttc else "0",
+        "ppv": format_price(total_ppv) if total_ppv else "0,00",
+        "ttc": format_price(total_ttc) if total_ttc else "0,00",
     }
 
 
@@ -1631,7 +1886,21 @@ def parse_optional_number(value: object) -> float | None:
         return None
 
 
+def format_price(value: object) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    parsed = parse_optional_number(raw)
+    if parsed is None:
+        return raw
+    return f"{parsed:.2f}".replace(".", ",")
+
+
 def format_invoice_number(value: float) -> str:
+    return format_price(value)
+
+
+def format_percentage_number(value: float) -> str:
     return f"{value:.4f}".rstrip("0").rstrip(".").replace(".", ",")
 
 
@@ -1658,7 +1927,7 @@ def invoice_products_from_form(
             pph_discounted = format_invoice_number(discounted_value)
 
         if discounted_value is not None and pph_value:
-            discount = format_invoice_number(
+            discount = format_percentage_number(
                 ((discounted_value / pph_value) - 1) * 100
             )
         else:
@@ -1747,8 +2016,8 @@ def normalize_order_product(product: dict[str, object]) -> dict[str, str]:
         "product_id": str(product.get("product_id", product.get("id", ""))).strip(),
         "supplier": str(product.get("supplier", "")).strip(),
         "name": str(product.get("name", "")).strip(),
-        "sale_price": str(product.get("ppv", product.get("sale_price", ""))).strip(),
-        "unit_price": str(product.get("pph", product.get("unit_price", ""))).strip(),
+        "sale_price": format_price(product.get("ppv", product.get("sale_price", ""))),
+        "unit_price": format_price(product.get("pph", product.get("unit_price", ""))),
         "discount": str(product.get("discount", "Aucune remise")).strip() or "Aucune remise",
         "tax": str(product.get("tax", "")).strip(),
         "barcode": str(product.get("barcode", "")).strip(),

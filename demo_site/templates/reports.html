@@ -44,6 +44,87 @@
   </div>
 </section>
 
+<section class="block report-detail-block">
+  <div class="summary-heading">
+    <div>
+      <h2>Detalle por pedido para {{ year }}</h2>
+      <p>Importes por laboratorio y farmacia, con el balance acumulado de años anteriores.</p>
+    </div>
+  </div>
+  {% if can_edit_reports %}
+    <form method="post" class="report-opening-form">
+      <input type="hidden" name="year" value="{{ year }}">
+      <input type="hidden" name="warehouse" value="{{ warehouse }}">
+      <strong>Saldo inicial acumulado anterior</strong>
+      <div class="report-opening-grid">
+        {% for pharmacy in report_detail.pharmacies %}
+          <label class="form-field">
+            <span>{{ pharmacy }}</span>
+            <input type="hidden" name="opening_pharmacy" value="{{ pharmacy }}">
+            <input class="input" name="opening_balance" value="{{ opening_balances.get(pharmacy, '') }}" placeholder="0,00">
+          </label>
+        {% endfor %}
+      </div>
+      <button class="btn btn-blue" type="submit">Guardar saldo inicial</button>
+    </form>
+  {% endif %}
+  <div class="table-wrap">
+    <table class="data-table report-detail-table">
+      <thead>
+        <tr>
+          <th>N.º pedido</th>
+          <th>Fecha</th>
+          <th>Laboratorio</th>
+          <th>PPH remisé</th>
+          {% for pharmacy in report_detail.pharmacies %}
+            <th>{{ pharmacy }}</th>
+          {% endfor %}
+          <th>Total</th>
+          <th>G. LABO</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="report-opening-row">
+          <td colspan="3"><strong>Saldo acumulado anterior</strong></td>
+          <td class="{% if report_detail.opening_row.pph_remised.negative %}report-negative{% endif %}">{{ report_detail.opening_row.pph_remised.display }}</td>
+          {% for pharmacy in report_detail.pharmacies %}
+            {% set value = report_detail.opening_row.pharmacy_values[pharmacy] %}
+            <td class="{% if value.negative %}report-negative{% endif %}">{{ value.display }}</td>
+          {% endfor %}
+          <td class="{% if report_detail.opening_row.total.negative %}report-negative{% endif %}">{{ report_detail.opening_row.total.display }}</td>
+          <td>{{ report_detail.opening_row.g_labo.display }}</td>
+        </tr>
+        {% for row in report_detail.rows %}
+          <tr>
+            <td>{{ row.number }}</td>
+            <td>{{ row.date|date_display }}</td>
+            <td>{{ row.supplier }}</td>
+            <td class="{% if row.pph_remised.negative %}report-negative{% endif %}">{{ row.pph_remised.display }}</td>
+            {% for pharmacy in report_detail.pharmacies %}
+              {% set value = row.pharmacy_values.get(pharmacy, {}) %}
+              <td class="{% if value.negative %}report-negative{% endif %}">{{ value.display }}</td>
+            {% endfor %}
+            <td class="{% if row.total.negative %}report-negative{% endif %}">{{ row.total.display }}</td>
+            <td class="{% if row.g_labo.negative %}report-negative{% endif %}">{{ row.g_labo.display }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="{{ report_detail.pharmacies|length + 6 }}" class="empty">Sin pedidos para este ejercicio.</td></tr>
+        {% endfor %}
+        <tr class="report-total-row">
+          <td colspan="3"><strong>Balance acumulado</strong></td>
+          <td>{{ report_detail.totals.pph_remised.display }}</td>
+          {% for pharmacy in report_detail.pharmacies %}
+            {% set value = report_detail.totals.pharmacy_values[pharmacy] %}
+            <td class="{% if value.negative %}report-negative{% endif %}">{{ value.display }}</td>
+          {% endfor %}
+          <td>{{ report_detail.totals.total.display }}</td>
+          <td>{{ report_detail.totals.g_labo.display }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
 <section class="block">
   <h2>Estadisticas de pedidos por proveedor para {{ year }}</h2>
   <div class="table-wrap">

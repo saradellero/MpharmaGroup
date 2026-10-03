@@ -67,10 +67,10 @@
                   <small>{{ row.supplier }}</small>
                 </td>
                 <td>
-                  <input class="input manager-price-input" name="manager_product_ppv_{{ row_index }}" value="{{ row.ppv }}">
+                  <input class="input manager-price-input" name="manager_product_ppv_{{ row_index }}" value="{{ row.ppv|price2 }}">
                 </td>
                 <td>
-                  <input class="input manager-price-input" name="manager_product_pph_{{ row_index }}" value="{{ row.pph }}">
+                  <input class="input manager-price-input" name="manager_product_pph_{{ row_index }}" value="{{ row.pph|price2 }}">
                 </td>
                 <td>
                   <input class="input manager-price-input" name="manager_product_tax_{{ row_index }}" value="{{ row.tax }}">
@@ -90,8 +90,8 @@
                 <input class="input" name="new_product_name" placeholder="Producto obligatorio" value="{{ new_product_values.get('name', '') }}">
                 <input class="input" name="new_product_barcode" placeholder="Codigo opcional" value="{{ new_product_values.get('barcode', '') }}">
               </td>
-              <td><input class="input manager-price-input" name="new_product_ppv" placeholder="PPV obligatorio" value="{{ new_product_values.get('ppv', '') }}"></td>
-              <td><input class="input manager-price-input" name="new_product_pph" placeholder="PPH obligatorio" value="{{ new_product_values.get('pph', '') }}"></td>
+              <td><input class="input manager-price-input" name="new_product_ppv" placeholder="PPV obligatorio" value="{{ new_product_values.get('ppv', '')|price2 }}"></td>
+              <td><input class="input manager-price-input" name="new_product_pph" placeholder="PPH obligatorio" value="{{ new_product_values.get('pph', '')|price2 }}"></td>
               <td><input class="input manager-price-input" name="new_product_tax" placeholder="IVA obligatorio" value="{{ new_product_values.get('tax', '') }}"></td>
               {% for pharmacy in manager_matrix.pharmacies %}
                 <td>

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import date, datetime
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from typing import Iterable
 
@@ -81,6 +82,7 @@ def init_db() -> None:
         ensure_records_table(table_key)
     ensure_order_products_table()
     ensure_invoice_products_table()
+    ensure_report_opening_balances_table()
 
 
 def validate_table_key(table_key: str) -> None:
@@ -111,6 +113,10 @@ def ensure_records_table(table_key: str) -> None:
     db = get_db()
     table_name = get_table_name(table_key)
     fields = get_record_fields(table_key)
+    table_existed = db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone() is not None
     column_sql = ", ".join(f"{field} TEXT NOT NULL DEFAULT ''" for field in fields)
     db.execute(
         f"""
@@ -129,8 +135,7 @@ def ensure_records_table(table_key: str) -> None:
                 f"ALTER TABLE {table_name} ADD COLUMN {field} TEXT NOT NULL DEFAULT ''"
             )
 
-    count = db.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
-    if count == 0:
+    if not table_existed:
         placeholders = ", ".join("?" for _field in fields)
         columns = ", ".join(fields)
         db.executemany(
@@ -253,6 +258,19 @@ def ensure_invoice_products_table() -> None:
     db.commit()
 
 
+def ensure_report_opening_balances_table() -> None:
+    db = get_db()
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS report_opening_balances (
+            pharmacy TEXT PRIMARY KEY,
+            amount TEXT NOT NULL DEFAULT ''
+        )
+        """
+    )
+    db.commit()
+
+
 def list_records(table_key: str, archived: bool | None = None) -> list[dict[str, object]]:
     table_name = get_table_name(table_key)
     fields = get_record_fields(table_key)
@@ -325,6 +343,34 @@ def list_invoice_products(order_number: str) -> list[dict[str, object]]:
         (str(order_number),),
     )
     return [dict(row) for row in rows.fetchall()]
+
+
+def list_report_opening_balances() -> dict[str, str]:
+    rows = get_db().execute(
+        "SELECT pharmacy, amount FROM report_opening_balances ORDER BY pharmacy"
+    )
+    return {
+        str(row["pharmacy"]): str(row["amount"])
+        for row in rows.fetchall()
+        if str(row["pharmacy"]).strip()
+    }
+
+
+def save_report_opening_balances(values: dict[str, object]) -> None:
+    db = get_db()
+    for pharmacy, amount in values.items():
+        pharmacy_value = str(pharmacy).strip()
+        if not pharmacy_value:
+            continue
+        db.execute(
+            """
+            INSERT INTO report_opening_balances (pharmacy, amount)
+            VALUES (?, ?)
+            ON CONFLICT(pharmacy) DO UPDATE SET amount = excluded.amount
+            """,
+            (pharmacy_value, str(amount).strip()),
+        )
+    db.commit()
 
 
 def save_invoice_products(
@@ -590,11 +636,25 @@ def format_date_for_display(value: object) -> str:
 def normalize_field_value(field: str, value: object) -> object:
     if field in DATE_FIELDS:
         return normalize_date_value(value)
+    if field in {"ppv", "pph"}:
+        return normalize_money_value(value)
     if value is None:
         return ""
     if isinstance(value, bool):
         return value
     return str(value).strip()
+
+
+def normalize_money_value(value: object) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    normalized = raw.replace(" ", "").replace("\xa0", "").replace(",", ".")
+    try:
+        amount = Decimal(normalized).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        return raw
+    return format(amount, ".2f").replace(".", ",")
 
 
 def deserialize_row(table_key: str, row: dict[str, object]) -> dict[str, object]:

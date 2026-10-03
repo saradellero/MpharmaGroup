@@ -180,6 +180,13 @@
       }) + " MAD";
     }
 
+    function formatPrice(value) {
+      return parseAmount(value).toLocaleString("{{ 'fr-FR' if language == 'fr' else 'es-ES' }}", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
+    }
+
     function updateLiveTotals() {
       var supplier = currentSupplier();
       var totalPpv = 0;
@@ -245,7 +252,7 @@
         button.className = "autocomplete-option";
         button.innerHTML =
           "<strong>" + escapeHtml(product.name) + "</strong>" +
-          "<span>" + escapeHtml(product.ppv) + " / " + escapeHtml(product.pph) + " - " + escapeHtml(product.tax) + "</span>";
+          "<span>" + escapeHtml(formatPrice(product.ppv)) + " / " + escapeHtml(formatPrice(product.pph)) + " - " + escapeHtml(product.tax) + "</span>";
         button.addEventListener("click", function () {
           selectedIds.add(String(product.id));
           if (!selectedQuantities[String(product.id)] || Number(selectedQuantities[String(product.id)]) < 1) {
@@ -287,8 +294,8 @@
           '<td class="row-select-cell"><input class="row-select-checkbox" type="checkbox" data-product-id="' + escapeHtml(productId) + '"' + checked + '></td>' +
           '<td>' + escapeHtml(product.name) + '</td>' +
           '<td><input class="input quantity-input" type="number" min="0" step="1" data-quantity-product-id="' + escapeHtml(productId) + '" value="' + escapeHtml(quantity) + '"></td>' +
-          '<td>' + escapeHtml(product.ppv) + '</td>' +
-          '<td>' + escapeHtml(product.pph) + '</td>' +
+          '<td>' + escapeHtml(formatPrice(product.ppv)) + '</td>' +
+          '<td>' + escapeHtml(formatPrice(product.pph)) + '</td>' +
           '<td>' + escapeHtml(product.tax) + '</td>' +
           '<td>' + escapeHtml(product.barcode) + '</td>';
         tableBody.appendChild(row);

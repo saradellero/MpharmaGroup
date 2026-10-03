@@ -43,8 +43,8 @@
           {% set invoice_values = product.invoice or {} %}
           <tr data-invoice-row>
             <td>{{ product.name }}</td>
-            <td>{{ product.sale_price }}</td>
-            <td><span data-field="pph">{{ product.unit_price }}</span></td>
+            <td>{{ product.sale_price|price2 }}</td>
+            <td><span data-field="pph">{{ product.unit_price|price2 }}</span></td>
             <td>{{ product.tax }}</td>
             <td>
               <input class="input invoice-input" type="text" inputmode="decimal" data-field="discount" name="invoice_discount_{{ loop.index0 }}" value="{{ invoice_values.get('discount_pct', '') }}" aria-label="Descuento de {{ product.name }}" readonly>
@@ -53,7 +53,7 @@
               <input class="input invoice-input" type="text" inputmode="decimal" data-field="ug" name="invoice_ug_{{ loop.index0 }}" value="{{ invoice_values.get('ug_pct', '') }}" aria-label="U.G de {{ product.name }}">
             </td>
             <td>
-              <input class="input invoice-input" type="text" inputmode="decimal" data-field="pph-discounted" name="invoice_pph_discounted_{{ loop.index0 }}" value="{{ invoice_values.get('pph_discounted', '') }}" aria-label="PPH descontado de {{ product.name }}">
+              <input class="input invoice-input" type="text" inputmode="decimal" data-field="pph-discounted" name="invoice_pph_discounted_{{ loop.index0 }}" value="{{ invoice_values.get('pph_discounted', '')|price2 }}" aria-label="PPH descontado de {{ product.name }}">
             </td>
             <td class="numeric-cell" data-field="quantity">{{ product.quantity }}</td>
             <td class="numeric-cell" data-field="line-total">-</td>
@@ -92,7 +92,7 @@
     }
 
     function formatNumber(value) {
-      return value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "").replace(".", ",");
+      return value.toFixed(2).replace(".", ",");
     }
 
     var table = document.querySelector("[data-invoice-table]");

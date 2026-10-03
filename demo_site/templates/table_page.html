@@ -65,7 +65,7 @@
                     {% if key in ['date', 'deadline', 'updated', 'birthdate'] %}
                       {{ ui.date_control("record_" ~ row.id ~ "_" ~ key, row.get(key, '')) }}
                     {% else %}
-                      <input class="input" type="text" name="record_{{ row.id }}_{{ key }}" value="{{ row.get(key, '') }}"{% if suggestion_list %} list="{{ suggestion_list }}" autocomplete="off"{% endif %}>
+                      <input class="input" type="text" name="record_{{ row.id }}_{{ key }}" value="{{ row.get(key, '')|price2 if table_key == 'products' and key in ['ppv', 'pph'] else row.get(key, '') }}"{% if suggestion_list %} list="{{ suggestion_list }}" autocomplete="off"{% endif %}>
                     {% endif %}
                   </td>
                 {% endfor %}
@@ -86,7 +86,7 @@
                   {% if key in ['date', 'deadline', 'updated', 'birthdate'] %}
                     {{ ui.date_control("new_" ~ key) }}
                   {% else %}
-                    <input class="input" type="text" name="new_{{ key }}" placeholder="{{ 'Nuevo registro' if loop.first else label }}"{% if suggestion_list %} list="{{ suggestion_list }}" autocomplete="off"{% endif %}>
+                    <input class="input" type="text" name="new_{{ key }}" placeholder="{{ 'Nuevo registro' if loop.first else label }}"{% if table_key == 'products' and key in ['ppv', 'pph'] %} inputmode="decimal"{% endif %}{% if suggestion_list %} list="{{ suggestion_list }}" autocomplete="off"{% endif %}>
                   {% endif %}
                 </td>
               {% endfor %}

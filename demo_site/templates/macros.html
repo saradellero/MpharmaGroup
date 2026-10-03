@@ -84,6 +84,20 @@
       0 registros
     {% endif %}
   </span>
+  {% if pagination.show_size_selector %}
+    <form class="pagination-size" method="get" action="{{ request.path }}">
+      {% for key, value in request.args.items() if key not in ["page", "per_page"] %}
+        <input type="hidden" name="{{ key }}" value="{{ value }}">
+      {% endfor %}
+      <label for="pagination-size">Mostrar</label>
+      <select id="pagination-size" name="per_page" onchange="this.form.submit()">
+        {% for page_size in pagination.per_page_options %}
+          <option value="{{ page_size }}" {% if pagination.per_page == page_size %}selected{% endif %}>{{ page_size }}</option>
+        {% endfor %}
+      </select>
+      <span>por página</span>
+    </form>
+  {% endif %}
   <div class="pagination-actions">
     {% if pagination.has_prev %}
       <a class="tool-btn" href="{{ pagination.first_url }}" title="Primera pagina">&lt;&lt;</a>
@@ -106,6 +120,8 @@
 
 {% macro render_table(table, rows, table_key, q="", can_edit=false, pagination=None) -%}
 {% set has_row_actions = can_edit and table_key in ["contacts", "purchaseorders"] %}
+{% set hide_password_column = table_key == "users" and not can_edit %}
+{% set visible_column_count = table.columns|length - (1 if hide_password_column else 0) %}
 <section class="block">
   <div class="block-toolbar">
     <form class="search-form" method="get">
@@ -120,18 +136,20 @@
       <thead>
         <tr class="filter-row">
           {% for key, label in table.columns %}
-            <th><span>contiene</span></th>
+            {% if not (hide_password_column and key == "password") %}<th><span>contiene</span></th>{% endif %}
           {% endfor %}
           {% if has_row_actions %}<th></th>{% endif %}
         </tr>
         <tr>
           {% for key, label in table.columns %}
-            {% set direction = "desc" if request.args.get("sort") == key and request.args.get("direction") != "desc" else "asc" %}
-            <th>
-              <a href="{{ request.path }}?q={{ q }}&sort={{ key }}&direction={{ direction }}">
-                {{ label }} <span class="sort-mark">^</span>
-              </a>
-            </th>
+            {% if not (hide_password_column and key == "password") %}
+              {% set direction = "desc" if request.args.get("sort") == key and request.args.get("direction") != "desc" else "asc" %}
+              <th>
+                <a href="{{ request.path }}?q={{ q }}&sort={{ key }}&direction={{ direction }}">
+                  {{ label }} <span class="sort-mark">^</span>
+                </a>
+              </th>
+            {% endif %}
           {% endfor %}
           {% if has_row_actions %}<th class="actions-col"></th>{% endif %}
         </tr>
@@ -140,12 +158,16 @@
         {% for row in rows %}
           <tr>
             {% for key, label in table.columns %}
-              {% if table_key == "purchaseorders" and key == "number" %}
-                <td><a class="row-action" href="{{ request.path }}?selected_order={{ row.get(key) }}">{{ row.get(key) }}</a></td>
-              {% elif key in ["date", "deadline", "updated", "birthdate"] %}
-                <td>{{ row.get(key)|date_display }}</td>
-              {% else %}
-                <td>{{ row.get(key) }}</td>
+              {% if not (hide_password_column and key == "password") %}
+                {% if table_key == "purchaseorders" and key == "number" %}
+                  <td><a class="row-action" href="{{ request.path }}?selected_order={{ row.get(key) }}">{{ row.get(key) }}</a></td>
+                {% elif key in ["date", "deadline", "updated", "birthdate"] %}
+                  <td>{{ row.get(key)|date_display }}</td>
+                {% elif table_key == "products" and key in ["ppv", "pph"] %}
+                  <td>{{ row.get(key)|price2 }}</td>
+                {% else %}
+                  <td>{{ row.get(key) }}</td>
+                {% endif %}
               {% endif %}
             {% endfor %}
             {% if can_edit and table_key == "contacts" %}
@@ -155,7 +177,7 @@
             {% endif %}
           </tr>
         {% else %}
-          <tr><td colspan="{{ table.columns|length + (1 if has_row_actions else 0) }}" class="empty">Sin resultados</td></tr>
+          <tr><td colspan="{{ visible_column_count + (1 if has_row_actions else 0) }}" class="empty">Sin resultados</td></tr>
         {% endfor %}
       </tbody>
     </table>

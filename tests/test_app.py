@@ -11,6 +11,7 @@ from demo_site.dashboard import build_dashboard_stats
 from demo_site.storage import (
     append_records,
     format_date_for_display,
+    get_db,
     list_invoice_products,
     list_order_products,
     list_records,
@@ -86,6 +87,23 @@ class AppTests(unittest.TestCase):
                 row for row in list_records("offers") if row["number"] == "DATE-1"
             )
         self.assertEqual(offer["deadline"], "2026-09-30")
+
+    def test_empty_catalog_is_not_reseeded_after_restart(self):
+        with self.app.app_context():
+            database = get_db()
+            database.execute("DELETE FROM products")
+            database.commit()
+            self.assertEqual(list_records("products"), [])
+
+        restarted_app = create_app(
+            {
+                "TESTING": True,
+                "SECRET_KEY": "test",
+                "DATABASE": str(self.database_path),
+            }
+        )
+        with restarted_app.app_context():
+            self.assertEqual(list_records("products"), [])
 
     def test_date_fields_use_calendar_controls(self):
         self.login()
@@ -623,8 +641,8 @@ class AppTests(unittest.TestCase):
         self.assertEqual(print_response.status_code, 200)
         self.assertIn(b"Producto Guardado 1", print_response.data)
         self.assertIn(b"<td>2</td>", print_response.data)
-        self.assertIn(b"<th>62</th>", print_response.data)
-        self.assertIn(b"<th>42</th>", print_response.data)
+        self.assertIn(b"<th>62,00</th>", print_response.data)
+        self.assertIn(b"<th>42,00</th>", print_response.data)
         self.assertNotIn(b"Producto Guardado 2", print_response.data)
 
     def test_pharmacy_order_lines_are_saved_per_pharmacy(self):
@@ -764,8 +782,8 @@ class AppTests(unittest.TestCase):
         self.assertEqual(print_response.status_code, 200)
         self.assertIn(b"Total farmacia", print_response.data)
         self.assertIn(b"Total acumulado (cantidad x precio unitario)", print_response.data)
-        self.assertIn(b"<th>186</th>", print_response.data)
-        self.assertIn(b"<th>128</th>", print_response.data)
+        self.assertIn(b"<th>186,00</th>", print_response.data)
+        self.assertIn(b"<th>128,00</th>", print_response.data)
 
     def test_purchase_order_total_ignores_unassigned_legacy_lines(self):
         with self.app.app_context():
@@ -973,8 +991,8 @@ class AppTests(unittest.TestCase):
         self.assertEqual(
             {(row["name"], row["ppv"], row["pph"], row["tax"]) for row in catalog},
             {
-                ("Producto Gestor A", "21", "13", "7%"),
-                ("Producto Gestor B", "31", "19", "10%"),
+                ("Producto Gestor A", "21,00", "13,00", "7%"),
+                ("Producto Gestor B", "31,00", "19,00", "10%"),
             },
         )
 
