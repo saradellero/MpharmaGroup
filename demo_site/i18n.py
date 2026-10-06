@@ -105,7 +105,6 @@ TRANSLATIONS = {
     "imprimir": "imprimer",
     "Buscar": "Rechercher",
     "Recargar": "Actualiser",
-    "contiene": "contient",
     "Sin resultados": "Aucun résultat",
     "Mostrando": "Affichage de",
     "Mostrar": "Afficher",

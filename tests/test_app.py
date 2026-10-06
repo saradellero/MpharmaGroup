@@ -6,7 +6,7 @@ from pathlib import Path
 
 from openpyxl import Workbook
 
-from demo_site.app import build_order_manager_matrix, build_order_recap, build_order_summary, create_app
+from demo_site.app import build_manager_options, build_order_manager_matrix, build_order_recap, build_order_summary, create_app
 from demo_site.app import sync_purchase_order_product_totals
 from demo_site.dashboard import build_dashboard_stats
 from demo_site.storage import (
@@ -255,6 +255,8 @@ class AppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Productos", response.data)
         self.assertIn(b"Gel apaisant", response.data)
+        self.assertNotIn(b"contiene", response.data)
+        self.assertIn(b"sort=", response.data)
 
     def test_internal_pages_have_a_safe_back_button(self):
         self.login()
@@ -1200,6 +1202,16 @@ class AppTests(unittest.TestCase):
             [row["name"] for row in recap["rows"]],
             ["Alfa producto", "Zeta producto"],
         )
+
+    def test_admin_pharmacy_is_excluded_from_order_columns_and_manager_options(self):
+        with self.app.app_context():
+            options = build_manager_options("Pharmacie Horizon")
+            summary = build_order_summary("105900")
+
+        option_values = {option["value"] for option in options}
+        self.assertNotIn("Pharmacie Horizon", option_values)
+        self.assertNotIn("Sara Demo", option_values)
+        self.assertNotIn("Pharmacie Horizon", summary["pharmacies"])
 
     def test_manager_can_edit_one_selected_pharmacy(self):
         with self.app.app_context():

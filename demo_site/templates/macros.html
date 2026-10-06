@@ -139,12 +139,6 @@
   <div class="table-wrap">
     <table class="data-table">
       <thead>
-        <tr class="filter-row">
-          {% for key, label in table.columns %}
-            {% if not (hide_password_column and key == "password") %}<th><span>contiene</span></th>{% endif %}
-          {% endfor %}
-          {% if has_row_actions %}<th></th>{% endif %}
-        </tr>
         <tr>
           {% for key, label in table.columns %}
             {% if not (hide_password_column and key == "password") %}
