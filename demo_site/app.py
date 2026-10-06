@@ -1738,13 +1738,22 @@ def build_report_detail_orders(
 
 def build_pharmacy_columns(products: list[dict[str, object]]) -> list[str]:
     pharmacies: list[str] = []
+    excluded_pharmacies = report_admin_identity_values()
     for user in list_records("users"):
         pharmacy = str(user.get("pharmacy", "")).strip()
-        if pharmacy and pharmacy not in pharmacies:
+        if (
+            pharmacy
+            and pharmacy not in excluded_pharmacies
+            and pharmacy not in pharmacies
+        ):
             pharmacies.append(pharmacy)
     for product in products:
         pharmacy = str(product.get("pharmacy", "")).strip()
-        if pharmacy and pharmacy not in pharmacies:
+        if (
+            pharmacy
+            and pharmacy not in excluded_pharmacies
+            and pharmacy not in pharmacies
+        ):
             pharmacies.append(pharmacy)
     return pharmacies
 
@@ -1752,7 +1761,10 @@ def build_pharmacy_columns(products: list[dict[str, object]]) -> list[str]:
 def build_manager_options(current: str = "") -> list[dict[str, str]]:
     options: list[dict[str, str]] = []
     seen: set[str] = set()
+    excluded_identities = report_admin_identity_values()
     for user in list_records("users"):
+        if is_admin_record(user):
+            continue
         pharmacy = str(user.get("pharmacy", "")).strip()
         name = " ".join(
             part
@@ -1763,12 +1775,16 @@ def build_manager_options(current: str = "") -> list[dict[str, str]]:
             if part
         )
         value = pharmacy or name or str(user.get("email", "")).strip()
-        if not value or value in seen:
+        if not value or value in excluded_identities or value in seen:
             continue
         options.append({"value": value, "label": pharmacy or name or value})
         seen.add(value)
     current_value = str(current).strip()
-    if current_value and current_value not in seen:
+    if (
+        current_value
+        and current_value not in excluded_identities
+        and current_value not in seen
+    ):
         options.insert(0, {"value": current_value, "label": current_value})
     return options
 
