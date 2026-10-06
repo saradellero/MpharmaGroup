@@ -6,14 +6,14 @@
 
 <section class="stats-grid">
   {% for stat in stats %}
-    <article class="stat-card">
+    <a class="stat-card" href="{{ url_for(stat.endpoint) }}" aria-label="Abrir {{ stat.label }}">
       <div class="stat-card__top">
         <span class="stat-icon stat-icon-{{ loop.index }}" aria-hidden="true"></span>
         <span>{{ stat.label }}</span>
       </div>
       <strong class="stat-card__value">{{ stat.value }}</strong>
       <small>{{ stat.trend }}</small>
-    </article>
+    </a>
   {% endfor %}
 </section>
 

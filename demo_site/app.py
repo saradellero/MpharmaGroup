@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import os
 from copy import deepcopy
+from datetime import date, datetime
 from functools import wraps
 from math import ceil
 from typing import Callable
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 from flask import (
     Flask,
@@ -45,13 +47,16 @@ from .storage import (
     delete_records,
     format_date_for_display,
     get_extra_fields,
+    get_invoice_order_discount,
     get_record_fields,
     list_invoice_products,
     list_order_products,
     list_report_opening_balances,
     list_records,
+    normalize_date_value,
     replace_order_products,
     save_invoice_products,
+    save_invoice_order_discount,
     save_order_products,
     save_report_opening_balances,
     save_records,
@@ -75,11 +80,70 @@ EDITABLE_ROUTE_PATHS = {
 }
 
 
+def deadline_has_arrived(value: object) -> bool:
+    """Return whether an order deadline is today or already in the past."""
+    normalized = normalize_date_value(value)
+    if not normalized:
+        return False
+    try:
+        deadline = datetime.strptime(normalized, "%Y-%m-%d").date()
+    except ValueError:
+        return False
+    return deadline <= date.today()
+
+
+def order_deadline_reached(order_id: str) -> bool:
+    for order in list_records("purchaseorders"):
+        if str(order.get("number", "")).strip() == str(order_id).strip():
+            return deadline_has_arrived(order.get("deadline", ""))
+    return False
+
+
+def locked_purchase_order_record_ids(
+    user: dict[str, object] | None,
+    archived: bool = False,
+) -> set[str]:
+    """Return list-row ids that this user must no longer be able to edit."""
+    if is_admin_user(user):
+        return set()
+    locked: set[str] = set()
+    for order in list_records("purchaseorders", archived=archived):
+        order_id = str(order.get("number", "")).strip()
+        if (
+            order_id
+            and deadline_has_arrived(order.get("deadline", ""))
+            and not is_order_manager(order_id, user)
+        ):
+            locked.add(str(order.get("id", "")).strip())
+    return locked
+
+
+def safe_back_url() -> str:
+    fallback = url_for("dashboard")
+    referrer = request.referrer
+    if not referrer:
+        return fallback
+    parsed = urlparse(referrer)
+    if parsed.netloc and parsed.netloc != request.host:
+        return fallback
+    path = parsed.path or "/"
+    current_query = request.query_string.decode("utf-8", errors="ignore")
+    if path == request.path and parsed.query == current_query:
+        return fallback
+    return path + (f"?{parsed.query}" if parsed.query else "")
+
+
 def create_app(config: dict[str, object] | None = None) -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="../static")
     app.jinja_env.filters["date_display"] = format_date_for_display
     app.jinja_env.filters["price2"] = format_price
-    app.config["SECRET_KEY"] = "dev-demo-secret-key"
+    app.config["SECRET_KEY"] = os.environ.get(
+        "SECRET_KEY",
+        "dev-demo-secret-key",
+    )
+    app.config["DATABASE_URL"] = (
+        os.environ.get("DATABASE_URL", "") if config is None else ""
+    )
     if config:
         app.config.update(config)
     apply_request_limits(app, config or {})
@@ -105,6 +169,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             "nav_items": visible_nav_items(current_user, NAV_ITEMS),
             "current_user": current_user,
             "upload_limit_label": format_bytes(int(app.config["MAX_CONTENT_LENGTH"])),
+            "back_url": safe_back_url(),
         }
 
     @app.after_request
@@ -225,6 +290,11 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
         table = TABLES[table_key]
         user = session.get("user")
         table_can_edit = can_edit_table(user, table_key)
+        locked_order_ids = (
+            locked_purchase_order_record_ids(user, archived)
+            if table_key == "purchaseorders"
+            else set()
+        )
         if request.method == "POST":
             if not table_can_edit:
                 abort(403)
@@ -243,16 +313,31 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 return redirect(request.path)
             if request.form.get("row_action") == "delete_selected":
                 selected_ids = request.form.getlist("selected_record_id")
-                deleted = delete_records(table_key, selected_ids)
+                allowed_ids = [
+                    record_id
+                    for record_id in selected_ids
+                    if record_id not in locked_order_ids
+                ]
+                blocked_count = len(selected_ids) - len(allowed_ids)
+                deleted = delete_records(table_key, allowed_ids)
                 if deleted:
                     flash(f"{deleted} filas eliminadas.", "success")
                 else:
                     flash("Selecciona al menos una fila para eliminar.", "error")
+                if blocked_count:
+                    flash(
+                        "No se pueden modificar ni eliminar pedidos cuya fecha limite ya ha llegado.",
+                        "error",
+                    )
                 return redirect(current_edit_url())
 
             fields = get_record_fields(table_key)
             existing_rows = []
+            blocked_count = 0
             for record_id in request.form.getlist("record_id"):
+                if record_id in locked_order_ids:
+                    blocked_count += 1
+                    continue
                 row = {"id": record_id}
                 for field in fields:
                     row[field] = request.form.get(f"record_{record_id}_{field}", "")
@@ -265,6 +350,11 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
 
             save_records(table_key, existing_rows, new_row)
             flash(f"{table['title']} guardados en la base de datos.", "success")
+            if blocked_count:
+                flash(
+                    "Los pedidos cuya fecha limite ya ha llegado no se han modificado.",
+                    "error",
+                )
             return redirect(request.path)
 
         edit_requested = request.args.get("edit") == "1"
@@ -288,10 +378,14 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 for row in rows
                 if any(q in str(value).lower() for value in row.values())
             ]
-        sort = request.args.get("sort", "")
+        sort = request.args.get("sort", "").strip()
+        direction = request.args.get("direction", "").strip().lower()
+        if table_key == "products" and not sort:
+            sort = "name"
+            direction = "asc"
         if sort:
-            rows = sorted(rows, key=lambda row: str(row.get(sort, "")).lower())
-            if request.args.get("direction") == "desc":
+            rows = sorted(rows, key=lambda row: str(row.get(sort, "")).casefold())
+            if direction == "desc":
                 rows = list(reversed(rows))
         paginated_rows, pagination = paginate_rows(rows)
         selected_order = request.args.get("selected_order", "").strip()
@@ -334,6 +428,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             order_summary=order_summary,
             supplier_suggestions=supplier_suggestions,
             product_suggestions=product_suggestions,
+            locked_order_ids=locked_order_ids,
         )
 
     @app.route("/imports/template/<table_key>.xlsx")
@@ -577,12 +672,19 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
         selected_manager_pharmacy = request.args.get("pharmacy", "").strip()
         if (manager_mode or manager_pharmacy_mode) and not order_manager:
             abort(403)
+        order_locked = order_deadline_reached(order_id) and not order_manager
+        if request.method == "POST" and order_locked:
+            flash(
+                "La fecha limite de este pedido ya ha llegado. Solo el gestor puede modificarlo.",
+                "error",
+            )
+            return redirect(url_for("purchaseorder_edit", order_id=order_id))
         edit_mode = (
             request.args.get("mode") == "edit"
             or manager_mode
             or manager_pharmacy_mode
             or not pharmacy_view
-        )
+        ) and not order_locked
         if request.method == "POST":
             if manager_pharmacy_mode:
                 available_pharmacies = build_pharmacy_columns(
@@ -703,7 +805,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             if pharmacy_view:
                 return redirect(url_for("purchaseorder_edit", order_id=order_id))
 
-        if pharmacy_view and not edit_mode:
+        if (pharmacy_view or order_locked) and not edit_mode:
             order = build_order_detail(order_id, pharmacy_scope=pharmacy_scope)
             return render_template(
                 "order_summary.html",
@@ -712,7 +814,11 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 order=order,
                 order_id=order_id,
                 order_summary=build_order_summary(order_id),
-                modify_url=url_for("purchaseorder_edit", order_id=order_id, mode="edit"),
+                modify_url=(
+                    url_for("purchaseorder_edit", order_id=order_id, mode="edit")
+                    if not order_locked
+                    else None
+                ),
                 manager_url=(
                     url_for("purchaseorder_edit", order_id=order_id, mode="manager")
                     if order_manager
@@ -720,6 +826,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 ),
                 print_url=url_for("purchaseorder_print", order_id=order_id),
                 current_pharmacy=pharmacy_scope,
+                modification_locked=order_locked,
             )
 
         if manager_pharmacy_mode:
@@ -838,10 +945,44 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
         order = build_order_detail(order_id, pharmacy_scope=None)
         products = build_aggregated_print_products(order_id)
         if request.method == "POST":
+            raw_total_discount = request.form.get("invoice_total_discount", "").strip()
+            total_discount = parse_optional_number(raw_total_discount)
+            if raw_total_discount and (
+                total_discount is None or total_discount < 0 or total_discount > 100
+            ):
+                flash(
+                    "El descuento total debe ser un porcentaje entre 0 y 100.",
+                    "error",
+                )
+                products = build_invoice_rows(order_id, products)
+                subtotal = invoice_subtotal(products)
+                return render_template(
+                    "order_invoices.html",
+                    title=f"Facturas del pedido {order_id}",
+                    active="purchaseorders",
+                    order=order,
+                    order_id=order_id,
+                    products=products,
+                    quantity_total=format_quantity(
+                        sum(parse_quantity(product.get("quantity", "")) for product in products)
+                    ),
+                    total_discount=raw_total_discount,
+                    subtotal_amount=format_price(subtotal),
+                    final_amount=format_price(
+                        apply_order_total_discount(subtotal, total_discount or 0.0)
+                    ),
+                )
             save_invoice_products(order_id, invoice_products_from_form(products))
+            save_invoice_order_discount(
+                order_id,
+                format_price(total_discount) if total_discount is not None else "",
+            )
             flash("Datos de factura guardados.", "success")
             return redirect(url_for("purchaseorder_invoices", order_id=order_id))
         products = build_invoice_rows(order_id, products)
+        subtotal = invoice_subtotal(products)
+        saved_total_discount = get_invoice_order_discount(order_id)
+        total_discount = parse_optional_number(saved_total_discount) or 0.0
         return render_template(
             "order_invoices.html",
             title=f"Facturas del pedido {order_id}",
@@ -851,6 +992,11 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             products=products,
             quantity_total=format_quantity(
                 sum(parse_quantity(product.get("quantity", "")) for product in products)
+            ),
+            total_discount=format_price(total_discount),
+            subtotal_amount=format_price(subtotal),
+            final_amount=format_price(
+                apply_order_total_discount(subtotal, total_discount)
             ),
         )
 
@@ -1098,11 +1244,18 @@ def build_order_recap(order_id: str) -> dict[str, object]:
             discounted_pph = parse_optional_number(
                 invoice_row.get("pph_discounted", "")
             )
+            current_pph = parse_optional_number(product.get("pph", ""))
             product_index[key] = {
                 "name": product_name,
                 "amounts": {pharmacy: 0.0 for pharmacy in pharmacies},
+                "quantity": 0.0,
+                "pph": current_pph if current_pph is not None else (discounted_pph or 0.0),
                 "total": 0.0,
-                "pph_discounted": discounted_pph or 0.0,
+                "pph_discounted": (
+                    discounted_pph
+                    if discounted_pph is not None
+                    else (current_pph or 0.0)
+                ),
             }
             product_rows.append(product_index[key])
         row = product_index[key]
@@ -1112,11 +1265,15 @@ def build_order_recap(order_id: str) -> dict[str, object]:
         amounts = row.get("amounts", {})
         if isinstance(amounts, dict):
             amounts[pharmacy] = float(amounts.get(pharmacy, 0.0)) + amount
+        row["quantity"] = float(row.get("quantity", 0.0)) + quantity
         row["total"] = float(row.get("total", 0.0)) + amount
 
     totals = {pharmacy: 0.0 for pharmacy in pharmacies}
     formatted_rows = []
     grand_total = 0.0
+    grand_quantity = 0.0
+    total_discount = parse_optional_number(get_invoice_order_discount(order_id)) or 0.0
+    discount_factor = 1.0 - max(0.0, min(100.0, total_discount)) / 100.0
     for row in product_rows:
         raw_amounts = row.get("amounts", {})
         amounts = {}
@@ -1124,14 +1281,19 @@ def build_order_recap(order_id: str) -> dict[str, object]:
             value = 0.0
             if isinstance(raw_amounts, dict):
                 value = float(raw_amounts.get(pharmacy, 0.0))
+            value *= discount_factor
             totals[pharmacy] += value
             amounts[pharmacy] = format_invoice_number(value)
-        row_total = float(row.get("total", 0.0))
+        row_total = float(row.get("total", 0.0)) * discount_factor
+        row_quantity = float(row.get("quantity", 0.0))
         grand_total += row_total
+        grand_quantity += row_quantity
         formatted_rows.append(
             {
                 "name": row.get("name", ""),
                 "amounts": amounts,
+                "quantity": format_quantity(row_quantity),
+                "pph": format_price(row.get("pph", 0.0)),
                 "total": format_invoice_number(row_total),
             }
         )
@@ -1144,6 +1306,7 @@ def build_order_recap(order_id: str) -> dict[str, object]:
             pharmacy: format_invoice_number(value)
             for pharmacy, value in totals.items()
         },
+        "grand_quantity": format_quantity(grand_quantity),
         "grand_total": format_invoice_number(grand_total),
     }
 
@@ -1409,7 +1572,8 @@ def report_order_amount(
         if quantity <= 0:
             continue
         total += quantity * report_line_pph_discounted(product, invoice_values)
-    return total
+    total_discount = parse_optional_number(get_invoice_order_discount(order_id)) or 0.0
+    return apply_order_total_discount(total, total_discount)
 
 
 def report_user_identity(user_id: str) -> dict[str, object]:
@@ -1884,6 +2048,24 @@ def parse_optional_number(value: object) -> float | None:
         return float(normalized)
     except ValueError:
         return None
+
+
+def invoice_subtotal(products: list[dict[str, object]]) -> float:
+    subtotal = 0.0
+    for product in products:
+        invoice = product.get("invoice") or {}
+        if not isinstance(invoice, dict):
+            invoice = {}
+        discounted = parse_optional_number(invoice.get("pph_discounted", ""))
+        if discounted is None:
+            discounted = parse_optional_number(product.get("unit_price", "")) or 0.0
+        subtotal += parse_quantity(product.get("quantity", "")) * discounted
+    return round(subtotal, 2)
+
+
+def apply_order_total_discount(amount: float, discount_pct: float) -> float:
+    bounded = max(0.0, min(100.0, float(discount_pct)))
+    return round(float(amount) * (1.0 - bounded / 100.0), 2)
 
 
 def format_price(value: object) -> str:

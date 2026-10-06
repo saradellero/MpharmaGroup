@@ -17,7 +17,7 @@
     </div>
     <button class="btn btn-white no-print" type="button" onclick="window.print()">Imprimir</button>
   </div>
-  <p class="invoice-formula-note">Cada celda muestra cantidad del producto en la farmacia x PPH descontado. Los importes se expresan con dos o mas decimales cuando es necesario.</p>
+  <p class="invoice-formula-note">Cada celda muestra el importe del producto por farmacia. La cantidad total y el PPH aparecen a continuacion para comprobar las actualizaciones del pedido.</p>
 
   {% if recap.rows %}
     <div class="table-wrap">
@@ -28,7 +28,9 @@
             {% for pharmacy in recap.pharmacies %}
               <th>{{ pharmacy }}</th>
             {% endfor %}
-            <th>Total</th>
+            <th>Cantidad total</th>
+            <th>PPH</th>
+            <th>Total PPH</th>
           </tr>
         </thead>
         <tbody>
@@ -38,16 +40,20 @@
               {% for pharmacy in recap.pharmacies %}
                 <td class="numeric-cell">{{ product.amounts.get(pharmacy, "0") }}</td>
               {% endfor %}
+              <td class="numeric-cell">{{ product.quantity }}</td>
+              <td class="numeric-cell">{{ product.pph }}</td>
               <td class="numeric-cell row-total">{{ product.total }}</td>
             </tr>
           {% endfor %}
         </tbody>
         <tfoot>
           <tr class="summary-total-row">
-            <th>Total</th>
+            <th>Total PPH</th>
             {% for pharmacy in recap.pharmacies %}
               <th class="numeric-cell">{{ recap.totals.get(pharmacy, "0") }}</th>
             {% endfor %}
+            <th class="numeric-cell">{{ recap.grand_quantity }}</th>
+            <th class="numeric-cell">-</th>
             <th class="numeric-cell">{{ recap.grand_total }}</th>
           </tr>
         </tfoot>

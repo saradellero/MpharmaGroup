@@ -57,13 +57,18 @@
 {%- endmacro %}
 
 {% macro page_header(title, subtitle=None, action_label=None, action_url=None, secondary_label=None, secondary_url=None) -%}
+{% set has_context_back = action_label and action_label.startswith("Volver") %}
+{% set show_back = request.path != url_for("dashboard") and not has_context_back %}
 <div class="page-header">
   <div>
     <h1>{{ title }}</h1>
     {% if subtitle %}<p>{{ subtitle }}</p>{% endif %}
   </div>
-  {% if (action_label and action_url) or (secondary_label and secondary_url) %}
+  {% if show_back or (action_label and action_url) or (secondary_label and secondary_url) %}
     <div class="page-actions">
+      {% if show_back %}
+        <a class="btn btn-white page-back" href="{{ back_url }}">← Volver</a>
+      {% endif %}
       {% if secondary_label and secondary_url %}
         <a class="btn btn-white" href="{{ secondary_url }}">{{ secondary_label }}</a>
       {% endif %}
@@ -118,7 +123,7 @@
 </div>
 {%- endmacro %}
 
-{% macro render_table(table, rows, table_key, q="", can_edit=false, pagination=None) -%}
+{% macro render_table(table, rows, table_key, q="", can_edit=false, pagination=None, locked_order_ids=[]) -%}
 {% set has_row_actions = can_edit and table_key in ["contacts", "purchaseorders"] %}
 {% set hide_password_column = table_key == "users" and not can_edit %}
 {% set visible_column_count = table.columns|length - (1 if hide_password_column else 0) %}
@@ -143,10 +148,13 @@
         <tr>
           {% for key, label in table.columns %}
             {% if not (hide_password_column and key == "password") %}
-              {% set direction = "desc" if request.args.get("sort") == key and request.args.get("direction") != "desc" else "asc" %}
+              {% set default_sort = "name" if table_key == "products" else "" %}
+              {% set active_sort = request.args.get("sort", default_sort) %}
+              {% set active_direction = request.args.get("direction", "asc") %}
+              {% set direction = "desc" if active_sort == key and active_direction != "desc" else "asc" %}
               <th>
-                <a href="{{ request.path }}?q={{ q }}&sort={{ key }}&direction={{ direction }}">
-                  {{ label }} <span class="sort-mark">^</span>
+                <a href="{{ request.path }}?q={{ q }}&sort={{ key }}&direction={{ direction }}{% if request.args.get('per_page') %}&per_page={{ request.args.get('per_page') }}{% endif %}">
+                  {{ label }} <span class="sort-mark">{% if active_sort == key %}{% if active_direction == "desc" %}v{% else %}^{% endif %}{% else %}^{% endif %}</span>
                 </a>
               </th>
             {% endif %}
@@ -156,7 +164,8 @@
       </thead>
       <tbody>
         {% for row in rows %}
-          <tr>
+          {% set row_locked = table_key == "purchaseorders" and row.get("id")|string in locked_order_ids %}
+          <tr{% if row_locked %} class="row-locked"{% endif %}>
             {% for key, label in table.columns %}
               {% if not (hide_password_column and key == "password") %}
                 {% if table_key == "purchaseorders" and key == "number" %}
@@ -173,7 +182,13 @@
             {% if can_edit and table_key == "contacts" %}
               <td><a class="row-action" href="{{ url_for('contact_create') }}">Editar</a></td>
             {% elif can_edit and table_key == "purchaseorders" %}
-              <td><a class="row-action" href="{{ url_for('purchaseorder_edit', order_id=row.number) }}">Editar</a></td>
+              <td>
+                {% if row_locked %}
+                  <span class="row-action row-action-disabled">Bloqueado</span>
+                {% else %}
+                  <a class="row-action" href="{{ url_for('purchaseorder_edit', order_id=row.number) }}">Editar</a>
+                {% endif %}
+              </td>
             {% endif %}
           </tr>
         {% else %}

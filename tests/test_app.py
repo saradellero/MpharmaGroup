@@ -1,5 +1,6 @@
 import unittest
 import uuid
+from datetime import date
 from io import BytesIO
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from demo_site.storage import (
     list_suppliers,
     normalize_date_value,
     save_order_products,
+    update_purchase_order,
 )
 
 
@@ -213,6 +215,9 @@ class AppTests(unittest.TestCase):
             "Estas cantidades son el resultado",
             "Productos del proveedor y cantidades",
             "Se muestran todos los productos",
+            "Subtotal PPH descontado",
+            "Descuento total adicional",
+            "Cada celda muestra el importe del producto",
             ">Junio 2026<",
             "Contrasena actual",
             "Nueva contrasena",
@@ -226,6 +231,7 @@ class AppTests(unittest.TestCase):
         self.assertIn("Options du gestionnaire", html)
         self.assertIn("Enregistrer en tant que gestionnaire", html)
         self.assertIn("Remises", html)
+        self.assertIn("Chaque cellule affiche le montant du produit", html)
         self.assertIn("Page 1 sur", html)
         self.assertNotRegex(html, r"Page \d+ de \d+")
 
@@ -249,6 +255,16 @@ class AppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Productos", response.data)
         self.assertIn(b"Gel apaisant", response.data)
+
+    def test_internal_pages_have_a_safe_back_button(self):
+        self.login()
+        response = self.client.get(
+            "/products",
+            headers={"Referer": "http://localhost/suppliers"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'href="/suppliers"', response.data)
+        self.assertIn(b"Volver", response.data)
 
     def test_dashboard_stats_reflect_database_records(self):
         with self.app.app_context():
@@ -307,6 +323,10 @@ class AppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Farmacias activas", response.data)
         self.assertIn(b"Pedido Dashboard", response.data)
+        self.assertIn(b'href="/purchaseorders"', response.data)
+        self.assertIn(b'href="/suppliers"', response.data)
+        self.assertIn(b'href="/products"', response.data)
+        self.assertIn(b'href="/users"', response.data)
 
     def test_contact_form_posts(self):
         self.login()
@@ -1021,6 +1041,9 @@ class AppTests(unittest.TestCase):
         self.assertIn(b"Pharmacie Riviera", recap_response.data)
         self.assertIn(b"Producto Gestor A", recap_response.data)
         self.assertIn(b"Total", recap_response.data)
+        self.assertIn(b"Cantidad total", recap_response.data)
+        self.assertIn(b"13,00", recap_response.data)
+        self.assertIn(b"19,00", recap_response.data)
 
         reports_response = self.client.get("/reports?year=2026")
         self.assertEqual(reports_response.status_code, 200)
@@ -1042,6 +1065,79 @@ class AppTests(unittest.TestCase):
         self.assertEqual(pharmacy_print.status_code, 200)
         self.assertIn(b"Pedido de Pharmacie Riviera 109014", pharmacy_print.data)
         self.assertIn(b"Producto Gestor B", pharmacy_print.data)
+
+    def test_recap_uses_current_order_prices_without_saved_invoice_rows(self):
+        with self.app.app_context():
+            append_records(
+                "products",
+                [
+                    {
+                        "supplier": "Proveedor Recap",
+                        "name": "Producto actualizado",
+                        "ppv": "20",
+                        "pph": "12",
+                        "tax": "0%",
+                        "barcode": "793401",
+                    }
+                ],
+            )
+            product = next(
+                row
+                for row in list_records("products")
+                if row["name"] == "Producto actualizado"
+            )
+            append_records(
+                "purchaseorders",
+                [
+                    {
+                        "number": "109021",
+                        "subject": "Pedido recap actualizado",
+                        "manager": "Pharmacie Atlas",
+                        "supplier": "Proveedor Recap",
+                        "deadline": "2099-12-31",
+                        "updated": "",
+                        "products": "1",
+                        "quantity": "3",
+                        "status": "Ouverte",
+                        "archived": "0",
+                    }
+                ],
+            )
+            save_order_products(
+                "109021",
+                [product | {"quantity": "3"}],
+                "Pharmacie Atlas",
+            )
+
+        self.login_pharmacy()
+        response = self.client.get("/purchaseorder/recap/109021")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Producto actualizado", response.data)
+        self.assertIn(b"12,00", response.data)
+        self.assertIn(b"3", response.data)
+        self.assertIn(b"36,00", response.data)
+
+        invoice_response = self.client.post(
+            "/purchaseorder/invoices/109021",
+            data={
+                "invoice_pph_discounted_0": "12",
+                "invoice_total_discount": "10",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(invoice_response.status_code, 200)
+        self.assertIn(b"Descuento total adicional", invoice_response.data)
+        self.assertIn(b"32,40", invoice_response.data)
+
+        discounted_recap = self.client.get("/purchaseorder/recap/109021")
+        self.assertEqual(discounted_recap.status_code, 200)
+        self.assertIn(b"32,40", discounted_recap.data)
+
+        self.client.get("/set-language?lang=fr&next=/")
+        french_invoice = self.client.get("/purchaseorder/invoices/109021")
+        self.assertEqual(french_invoice.status_code, 200)
+        self.assertIn("Sous-total PPH remisé".encode(), french_invoice.data)
+        self.assertIn("Remise totale supplémentaire".encode(), french_invoice.data)
 
     def test_manager_can_edit_one_selected_pharmacy(self):
         with self.app.app_context():
@@ -1236,6 +1332,8 @@ class AppTests(unittest.TestCase):
         self.assertIn(b"Recapitulacion del pedido 109015", response.data)
 
     def test_pharmacy_order_view_has_side_actions_and_quantities(self):
+        with self.app.app_context():
+            update_purchase_order("105900", {"deadline": "2099-12-31"})
         self.login_pharmacy()
         response = self.client.get("/purchaseorder/edit/105900")
         self.assertEqual(response.status_code, 200)
@@ -1253,6 +1351,77 @@ class AppTests(unittest.TestCase):
         self.assertIn(b"data-live-total-ppv", edit_response.data)
         self.assertIn(b"data-live-total-ttc", edit_response.data)
         self.assertIn(b"updateLiveTotals", edit_response.data)
+
+    def test_deadline_blocks_other_pharmacies_but_not_the_assigned_manager(self):
+        with self.app.app_context():
+            update_purchase_order("105900", {"deadline": date.today().isoformat()})
+            append_records(
+                "purchaseorders",
+                [
+                    {
+                        "number": "109020",
+                        "subject": "Pedido con fecha limite",
+                        "manager": "Pharmacie Atlas",
+                        "supplier": "Atlas Distribution",
+                        "deadline": date.today().isoformat(),
+                        "updated": "",
+                        "products": "0",
+                        "quantity": "",
+                        "status": "Ouverte",
+                        "archived": "0",
+                    }
+                ],
+            )
+
+        self.login_pharmacy()
+        summary_response = self.client.get("/purchaseorder/edit/105900")
+        self.assertEqual(summary_response.status_code, 200)
+        self.assertIn(b"Modificar pedido bloqueado", summary_response.data)
+        self.assertIn(b"Solo el gestor puede modificar", summary_response.data)
+
+        edit_response = self.client.get("/purchaseorder/edit/105900?mode=edit")
+        self.assertEqual(edit_response.status_code, 200)
+        self.assertNotIn(b"data-quantity-product-id", edit_response.data)
+
+        blocked_post = self.client.post(
+            "/purchaseorder/edit/105900?mode=edit",
+            data={"subject": "No debe guardarse"},
+            follow_redirects=True,
+        )
+        self.assertEqual(blocked_post.status_code, 200)
+        self.assertIn(b"Solo el gestor puede modificarlo", blocked_post.data)
+        with self.app.app_context():
+            order = next(
+                row for row in list_records("purchaseorders") if row["number"] == "105900"
+            )
+        self.assertEqual(order["subject"], "Commande groupe juin")
+
+        manager_response = self.client.get(
+            "/purchaseorder/edit/109020?mode=manager"
+        )
+        self.assertEqual(manager_response.status_code, 200)
+        self.assertIn(b"Edicion avanzada del gestor", manager_response.data)
+        manager_post = self.client.post(
+            "/purchaseorder/edit/109020?mode=manager",
+            data={
+                "owner_id": "Pharmacie Atlas",
+                "warehouse": "Principal",
+                "subject": "Pedido actualizado por el gestor",
+                "supplier_id": "Atlas Distribution",
+                "deadline": date.today().strftime("%d/%m/%Y"),
+                "contact_id": "",
+                "terms_and_conditions": "",
+                "payment_timeframe": "",
+                "delivery_timeframe": "",
+                "delivery_transporter": "",
+            },
+        )
+        self.assertEqual(manager_post.status_code, 302)
+        with self.app.app_context():
+            order = next(
+                row for row in list_records("purchaseorders") if row["number"] == "109020"
+            )
+        self.assertEqual(order["subject"], "Pedido actualizado por el gestor")
 
     def test_admin_pharmacy_scope_starts_at_zero_when_another_pharmacy_has_lines(self):
         with self.app.app_context():
@@ -1599,6 +1768,8 @@ class AppTests(unittest.TestCase):
         self.assertIn("Farmacia Nueva", pharmacy_names)
 
     def test_pharmacy_user_can_only_edit_purchaseorders(self):
+        with self.app.app_context():
+            update_purchase_order("105900", {"deadline": "2099-12-31"})
         self.login_pharmacy()
 
         response = self.client.get("/purchaseorders?edit=1")

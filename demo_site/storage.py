@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 from flask import current_app, g
 
@@ -51,6 +52,42 @@ EXTRA_FIELDS = {
 }
 
 
+class PostgresConnection:
+    """Small DB-API compatibility layer for the existing ? placeholders."""
+
+    def __init__(self, connection: Any) -> None:
+        self._connection = connection
+
+    @staticmethod
+    def _adapt_query(query: str) -> str:
+        return query.replace("?", "%s")
+
+    def execute(self, query: str, params: object = ()) -> Any:
+        return self._connection.execute(self._adapt_query(query), params)
+
+    def executemany(self, query: str, params: object) -> Any:
+        with self._connection.cursor() as cursor:
+            cursor.executemany(self._adapt_query(query), params)
+            return cursor
+
+    def commit(self) -> None:
+        self._connection.commit()
+
+    def close(self) -> None:
+        self._connection.close()
+
+
+def get_database_url() -> str:
+    return str(
+        current_app.config.get("DATABASE_URL")
+        or os.environ.get("DATABASE_URL", "")
+    ).strip()
+
+
+def uses_postgres() -> bool:
+    return bool(get_database_url())
+
+
 def get_database_path() -> Path:
     configured = current_app.config.get("DATABASE")
     if configured:
@@ -58,8 +95,24 @@ def get_database_path() -> Path:
     return Path(current_app.root_path).parent / "data" / "nova_groups.sqlite3"
 
 
-def get_db() -> sqlite3.Connection:
+def get_db() -> Any:
     if "db" not in g:
+        database_url = get_database_url()
+        if database_url:
+            try:
+                import psycopg
+                from psycopg.rows import dict_row
+            except ImportError as error:
+                raise RuntimeError(
+                    "DATABASE_URL is configured, but psycopg is not installed."
+                ) from error
+            connection = psycopg.connect(
+                database_url,
+                connect_timeout=10,
+                row_factory=dict_row,
+            )
+            g.db = PostgresConnection(connection)
+            return g.db
         path = get_database_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         database_uri = "file:" + path.resolve().as_posix() + "?mode=rwc&nolock=1"
@@ -69,6 +122,45 @@ def get_db() -> sqlite3.Connection:
         connection.row_factory = sqlite3.Row
         g.db = connection
     return g.db
+
+
+def table_exists(db: Any, table_name: str) -> bool:
+    if uses_postgres():
+        return (
+            db.execute(
+                """
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = current_schema() AND table_name = ?
+                """,
+                (table_name,),
+            ).fetchone()
+            is not None
+        )
+    return (
+        db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table_name,),
+        ).fetchone()
+        is not None
+    )
+
+
+def table_columns(db: Any, table_name: str) -> set[str]:
+    if uses_postgres():
+        rows = db.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = current_schema() AND table_name = ?
+            """,
+            (table_name,),
+        ).fetchall()
+        return {str(row["column_name"]) for row in rows}
+    return {
+        row["name"]
+        for row in db.execute(f"PRAGMA table_info({table_name})").fetchall()
+    }
 
 
 def close_db(error: BaseException | None = None) -> None:
@@ -82,6 +174,7 @@ def init_db() -> None:
         ensure_records_table(table_key)
     ensure_order_products_table()
     ensure_invoice_products_table()
+    ensure_invoice_order_totals_table()
     ensure_report_opening_balances_table()
 
 
@@ -113,22 +206,20 @@ def ensure_records_table(table_key: str) -> None:
     db = get_db()
     table_name = get_table_name(table_key)
     fields = get_record_fields(table_key)
-    table_existed = db.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-        (table_name,),
-    ).fetchone() is not None
+    table_existed = table_exists(db, table_name)
     column_sql = ", ".join(f"{field} TEXT NOT NULL DEFAULT ''" for field in fields)
+    id_definition = (
+        "BIGSERIAL PRIMARY KEY" if uses_postgres() else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    )
     db.execute(
         f"""
         CREATE TABLE IF NOT EXISTS {table_name} (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id {id_definition},
             {column_sql}
         )
         """
     )
-    existing_columns = {
-        row["name"] for row in db.execute(f"PRAGMA table_info({table_name})").fetchall()
-    }
+    existing_columns = table_columns(db, table_name)
     for field in fields:
         if field not in existing_columns:
             db.execute(
@@ -194,10 +285,13 @@ def update_user_password(email: str, password: str) -> None:
 
 def ensure_order_products_table() -> None:
     db = get_db()
+    id_definition = (
+        "BIGSERIAL PRIMARY KEY" if uses_postgres() else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    )
     db.execute(
         """
         CREATE TABLE IF NOT EXISTS order_products (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id ID_DEFINITION_PLACEHOLDER,
             order_number TEXT NOT NULL,
             pharmacy TEXT NOT NULL DEFAULT '',
             product_id TEXT NOT NULL DEFAULT '',
@@ -211,10 +305,9 @@ def ensure_order_products_table() -> None:
             position INTEGER NOT NULL DEFAULT 0
         )
         """
+        .replace("ID_DEFINITION_PLACEHOLDER", id_definition)
     )
-    existing_columns = {
-        row["name"] for row in db.execute("PRAGMA table_info(order_products)").fetchall()
-    }
+    existing_columns = table_columns(db, "order_products")
     required_columns = {
         "order_number": "TEXT NOT NULL DEFAULT ''",
         "pharmacy": "TEXT NOT NULL DEFAULT ''",
@@ -236,10 +329,13 @@ def ensure_order_products_table() -> None:
 
 def ensure_invoice_products_table() -> None:
     db = get_db()
+    id_definition = (
+        "BIGSERIAL PRIMARY KEY" if uses_postgres() else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    )
     db.execute(
         """
         CREATE TABLE IF NOT EXISTS invoice_products (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id ID_DEFINITION_PLACEHOLDER,
             order_number TEXT NOT NULL,
             product_id TEXT NOT NULL DEFAULT '',
             name TEXT NOT NULL DEFAULT '',
@@ -248,11 +344,25 @@ def ensure_invoice_products_table() -> None:
             pph_discounted TEXT NOT NULL DEFAULT ''
         )
         """
+        .replace("ID_DEFINITION_PLACEHOLDER", id_definition)
     )
     db.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS invoice_products_order_product
         ON invoice_products (order_number, product_id, name)
+        """
+    )
+    db.commit()
+
+
+def ensure_invoice_order_totals_table() -> None:
+    db = get_db()
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS invoice_order_totals (
+            order_number TEXT PRIMARY KEY,
+            total_discount_pct TEXT NOT NULL DEFAULT ''
+        )
         """
     )
     db.commit()
@@ -343,6 +453,39 @@ def list_invoice_products(order_number: str) -> list[dict[str, object]]:
         (str(order_number),),
     )
     return [dict(row) for row in rows.fetchall()]
+
+
+def get_invoice_order_discount(order_number: str) -> str:
+    row = get_db().execute(
+        """
+        SELECT total_discount_pct
+        FROM invoice_order_totals
+        WHERE order_number = ?
+        """,
+        (str(order_number).strip(),),
+    ).fetchone()
+    return str(row["total_discount_pct"] if row else "").strip()
+
+
+def save_invoice_order_discount(order_number: str, value: object) -> None:
+    order_value = str(order_number).strip()
+    normalized = normalize_money_value(value)
+    db = get_db()
+    if not normalized:
+        db.execute(
+            "DELETE FROM invoice_order_totals WHERE order_number = ?",
+            (order_value,),
+        )
+    else:
+        db.execute(
+            """
+            INSERT INTO invoice_order_totals (order_number, total_discount_pct)
+            VALUES (?, ?)
+            ON CONFLICT(order_number) DO UPDATE SET total_discount_pct = excluded.total_discount_pct
+            """,
+            (order_value, normalized),
+        )
+    db.commit()
 
 
 def list_report_opening_balances() -> dict[str, str]:

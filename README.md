@@ -7,6 +7,7 @@ Aplicacion Python/Flask inspirada en una interfaz de gestion de compras agrupada
 - Python 3.11+
 - Flask
 - openpyxl
+- psycopg
 
 Instalacion:
 
@@ -83,13 +84,32 @@ Las rutas `/suppliers`, `/contacts`, `/products`, `/offers`, `/purchaseorders` y
 
 La carga Excel usa un formulario independiente para no reenviar todas las filas editables existentes. Esto permite importar listados grandes de productos sin disparar errores `Request Entity Too Large`.
 
-La base SQLite se crea automaticamente en:
+En local, la base SQLite se crea automaticamente en:
 
 ```text
 data/nova_groups.sqlite3
 ```
 
 Si una base ya existia antes de esta version, al arrancar la app se anade automaticamente la columna de contrasena a farmacias y se rellenan las contrasenas demo iniciales cuando esten vacias.
+
+## Base de datos PostgreSQL para produccion
+
+La aplicacion usa SQLite cuando no existe `DATABASE_URL` y PostgreSQL cuando `DATABASE_URL` contiene una cadena de conexion de Supabase o Neon. No guardes esa cadena en GitHub: debe configurarse como variable de entorno en Render.
+
+Para conservar los datos locales antes del primer despliegue, ejecuta desde Git Bash:
+
+```bash
+python scripts/migrate_sqlite_to_postgres.py \
+  --sqlite "data/nova_groups.sqlite3" \
+  --postgres-url "postgresql://USUARIO:CONTRASENA@HOST:5432/postgres?sslmode=require"
+```
+
+El migrador copia catalogos, usuarios, pedidos, lineas de pedido, descuentos de factura y balances iniciales. La migracion reemplaza los datos existentes en las tablas de la base PostgreSQL de destino.
+
+En Render configura estas variables en **Environment**:
+
+- `DATABASE_URL`: cadena PostgreSQL de Supabase o Neon.
+- `SECRET_KEY`: una clave aleatoria; el `render.yaml` puede generarla automaticamente.
 
 ## Estructura
 

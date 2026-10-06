@@ -57,13 +57,21 @@
 
   <aside class="order-side-panel">
     <h2>Opciones</h2>
-    <a class="side-action" href="{{ modify_url }}">Modificar pedido</a>
+    {% if modify_url %}
+      <a class="side-action" href="{{ modify_url }}">Modificar pedido</a>
+    {% else %}
+      <span class="side-action disabled">Modificar pedido bloqueado</span>
+    {% endif %}
     {% if manager_url %}
       <a class="side-action" href="{{ manager_url }}">Modificar como gestor</a>
     {% endif %}
     <a class="side-action" href="{{ url_for('purchaseorder_recap', order_id=order_id) }}">Recapitulacion</a>
     <a class="side-action" href="{{ print_url }}" target="_blank">Imprimir pedido</a>
-    <p>Estas cantidades son el resultado acumulado de todas las farmacias.</p>
+    {% if modification_locked %}
+      <p>La fecha limite ya ha llegado. Solo el gestor puede modificar este pedido.</p>
+    {% else %}
+      <p>Estas cantidades son el resultado acumulado de todas las farmacias.</p>
+    {% endif %}
   </aside>
 </div>
 {% endblock %}

@@ -65,9 +65,16 @@
       {% if products %}
         <tfoot>
           <tr class="invoice-total-row">
-            <th colspan="7">Totales</th>
+            <th colspan="7">Subtotal PPH descontado</th>
             <th class="numeric-cell" data-total="quantity">{{ quantity_total }}</th>
-            <th class="numeric-cell" data-total="amount">0</th>
+            <th class="numeric-cell" data-total="amount">{{ subtotal_amount }}</th>
+          </tr>
+          <tr class="invoice-global-discount-row">
+            <th colspan="7">Descuento total adicional (%)</th>
+            <th>
+              <input class="input invoice-input" type="text" inputmode="decimal" name="invoice_total_discount" data-total-discount value="{{ total_discount|default('') }}" aria-label="Descuento total adicional">
+            </th>
+            <th class="numeric-cell" data-total="final-amount">{{ final_amount }}</th>
           </tr>
         </tfoot>
       {% endif %}
@@ -111,6 +118,12 @@
       var totalAmount = table.querySelector('[data-total="amount"]');
       if (totalAmount) {
         totalAmount.textContent = formatNumber(amount);
+      }
+      var totalDiscountInput = table.querySelector("[data-total-discount]");
+      var finalAmount = table.querySelector('[data-total="final-amount"]');
+      if (finalAmount) {
+        var discount = totalDiscountInput ? (parseNumber(totalDiscountInput.value) || 0) : 0;
+        finalAmount.textContent = formatNumber(Math.max(0, amount * (1 - discount / 100)));
       }
     }
 
@@ -163,6 +176,10 @@
         updateDiscountedPph();
       }
     });
+    var totalDiscountInput = table.querySelector("[data-total-discount]");
+    if (totalDiscountInput) {
+      totalDiscountInput.addEventListener("input", updateTotals);
+    }
     updateTotals();
   });
 </script>

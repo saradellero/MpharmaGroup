@@ -32,21 +32,25 @@ def build_dashboard_stats(list_records: Callable) -> list[dict[str, str]]:
             "label": "Pedidos abiertos",
             "value": format_number(len(open_orders)),
             "trend": f"{format_number(total_quantity)} unidades en curso",
+            "endpoint": "purchaseorders",
         },
         {
             "label": "Proveedores activos",
             "value": format_number(len(suppliers)),
             "trend": f"{format_number(len(contacts))} contactos registrados",
+            "endpoint": "suppliers",
         },
         {
             "label": "Productos seguidos",
             "value": format_number(len(products)),
             "trend": f"{format_number(len(offers))} ofertas disponibles",
+            "endpoint": "products",
         },
         {
             "label": "Farmacias activas",
             "value": format_number(len(active_users)),
             "trend": f"{format_number(len(users))} cuentas totales",
+            "endpoint": "users",
         },
     ]
 

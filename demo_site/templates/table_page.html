@@ -44,10 +44,11 @@
           </thead>
           <tbody>
             {% for row in rows %}
-              <tr>
+              {% set row_locked = table_key == "purchaseorders" and row.get("id")|string in locked_order_ids %}
+              <tr{% if row_locked %} class="row-locked"{% endif %}>
                 <input type="hidden" name="record_id" value="{{ row.id }}">
                 <td class="row-select-cell">
-                  <input class="row-select-checkbox" type="checkbox" name="selected_record_id" value="{{ row.id }}" aria-label="Seleccionar fila {{ loop.index }}">
+                  <input class="row-select-checkbox" type="checkbox" name="selected_record_id" value="{{ row.id }}" aria-label="Seleccionar fila {{ loop.index }}"{% if row_locked %} disabled{% endif %}>
                 </td>
                 {% for field in hidden_fields %}
                   <input type="hidden" name="record_{{ row.id }}_{{ field }}" value="{{ row.get(field, '') }}">
@@ -63,9 +64,9 @@
                       {% set suggestion_list = "product-name-options" %}
                     {% endif %}
                     {% if key in ['date', 'deadline', 'updated', 'birthdate'] %}
-                      {{ ui.date_control("record_" ~ row.id ~ "_" ~ key, row.get(key, '')) }}
+                      {{ ui.date_control("record_" ~ row.id ~ "_" ~ key, row.get(key, ''), row_locked) }}
                     {% else %}
-                      <input class="input" type="text" name="record_{{ row.id }}_{{ key }}" value="{{ row.get(key, '')|price2 if table_key == 'products' and key in ['ppv', 'pph'] else row.get(key, '') }}"{% if suggestion_list %} list="{{ suggestion_list }}" autocomplete="off"{% endif %}>
+                      <input class="input" type="text" name="record_{{ row.id }}_{{ key }}" value="{{ row.get(key, '')|price2 if table_key == 'products' and key in ['ppv', 'pph'] else row.get(key, '') }}"{% if row_locked %} readonly{% endif %}{% if suggestion_list %} list="{{ suggestion_list }}" autocomplete="off"{% endif %}>
                     {% endif %}
                   </td>
                 {% endfor %}
@@ -123,7 +124,7 @@
     {{ ui.pagination_controls(pagination) }}
   </section>
 {% else %}
-  {{ ui.render_table(table, rows, table_key, q, can_edit, pagination) }}
+  {{ ui.render_table(table, rows, table_key, q, can_edit, pagination, locked_order_ids) }}
   {% if order_summary %}
     <section class="block order-summary-block">
       <div class="summary-heading">
