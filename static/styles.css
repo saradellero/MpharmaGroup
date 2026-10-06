@@ -2279,6 +2279,23 @@ textarea {
   box-shadow: 0 2px 0 rgba(24, 45, 73, 0.14);
 }
 
+/* Keep the pharmacy names visible while the summary tables scroll internally. */
+.sticky-summary-wrap {
+  position: relative;
+  max-height: min(68vh, 680px);
+  overflow: auto;
+}
+
+.sticky-summary-wrap .order-summary-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.sticky-summary-wrap .order-summary-table thead th {
+  top: 0;
+  z-index: 8;
+}
+
 .stat-card {
   color: inherit;
   text-decoration: none;

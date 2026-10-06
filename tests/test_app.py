@@ -6,7 +6,7 @@ from pathlib import Path
 
 from openpyxl import Workbook
 
-from demo_site.app import build_order_manager_matrix, create_app
+from demo_site.app import build_order_manager_matrix, build_order_recap, build_order_summary, create_app
 from demo_site.app import sync_purchase_order_product_totals
 from demo_site.dashboard import build_dashboard_stats
 from demo_site.storage import (
@@ -1138,6 +1138,68 @@ class AppTests(unittest.TestCase):
         self.assertEqual(french_invoice.status_code, 200)
         self.assertIn("Sous-total PPH remisé".encode(), french_invoice.data)
         self.assertIn("Remise totale supplémentaire".encode(), french_invoice.data)
+
+    def test_order_summary_and_recap_sort_products_alphabetically(self):
+        with self.app.app_context():
+            append_records(
+                "products",
+                [
+                    {
+                        "supplier": "Proveedor Orden Alfabetico",
+                        "name": "Zeta producto",
+                        "ppv": "20",
+                        "pph": "10",
+                        "tax": "0%",
+                        "barcode": "793601",
+                    },
+                    {
+                        "supplier": "Proveedor Orden Alfabetico",
+                        "name": "Alfa producto",
+                        "ppv": "21",
+                        "pph": "11",
+                        "tax": "0%",
+                        "barcode": "793602",
+                    },
+                ],
+            )
+            products = [
+                row
+                for row in list_records("products")
+                if row["supplier"] == "Proveedor Orden Alfabetico"
+            ]
+            append_records(
+                "purchaseorders",
+                [
+                    {
+                        "number": "109022",
+                        "subject": "Pedido orden alfabetico",
+                        "manager": "Pharmacie Atlas",
+                        "supplier": "Proveedor Orden Alfabetico",
+                        "deadline": "2099-12-31",
+                        "updated": "",
+                        "products": "2",
+                        "quantity": "3",
+                        "status": "Ouverte",
+                        "archived": "0",
+                    }
+                ],
+            )
+            save_order_products(
+                "109022",
+                [products[0] | {"quantity": "1"}, products[1] | {"quantity": "2"}],
+                "Pharmacie Atlas",
+            )
+            summary = build_order_summary("109022")
+            recap = build_order_recap("109022")
+
+        self.assertEqual(
+            [row["name"] for row in summary["rows"]],
+            ["Alfa producto", "Zeta producto"],
+        )
+        self.assertEqual(
+            [row["name"] for row in recap["rows"]],
+            ["Alfa producto", "Zeta producto"],
+        )
 
     def test_manager_can_edit_one_selected_pharmacy(self):
         with self.app.app_context():

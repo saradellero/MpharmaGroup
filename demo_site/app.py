@@ -1188,6 +1188,7 @@ def build_order_summary(order_id: str) -> dict[str, object]:
     totals = {pharmacy: 0.0 for pharmacy in pharmacies}
     grand_total = 0.0
     formatted_rows = []
+    product_rows.sort(key=lambda row: str(row.get("name", "")).casefold())
     for row in product_rows:
         raw_quantities = row.get("quantities", {})
         formatted_quantities = {}
@@ -1274,6 +1275,7 @@ def build_order_recap(order_id: str) -> dict[str, object]:
     grand_quantity = 0.0
     total_discount = parse_optional_number(get_invoice_order_discount(order_id)) or 0.0
     discount_factor = 1.0 - max(0.0, min(100.0, total_discount)) / 100.0
+    product_rows.sort(key=lambda row: str(row.get("name", "")).casefold())
     for row in product_rows:
         raw_amounts = row.get("amounts", {})
         amounts = {}
@@ -1844,6 +1846,7 @@ def build_order_manager_matrix(order_id: str) -> dict[str, object]:
         if pharmacy and quantity > 0 and isinstance(quantities, dict):
             quantities[pharmacy] = format_quantity(quantity)
 
+    product_rows.sort(key=lambda row: str(row.get("name", "")).casefold())
     return {"pharmacies": pharmacies, "rows": product_rows}
 
 
@@ -2012,7 +2015,10 @@ def build_aggregated_print_products(order_id: str) -> list[dict[str, str]]:
         aggregated[product_key]["quantity"] = format_quantity(
             current_quantity + quantity
         )
-    return [aggregated[key] for key in order_keys]
+    return sorted(
+        (aggregated[key] for key in order_keys),
+        key=lambda product: str(product.get("name", "")).casefold(),
+    )
 
 
 def invoice_product_key(product: dict[str, object]) -> str:
