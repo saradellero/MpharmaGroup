@@ -629,13 +629,6 @@ textarea {
   background: #f9fbfb;
 }
 
-.filter-row th {
-  color: #77818a;
-  font-size: 11px;
-  font-weight: 400;
-  background: #f9fafb;
-}
-
 .sort-mark {
   color: var(--teal-dark);
   font-size: 10px;
