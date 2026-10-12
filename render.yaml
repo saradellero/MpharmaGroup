@@ -9,3 +9,15 @@ services:
         generateValue: true
       - key: DATABASE_URL
         sync: false
+      - key: MAIL_SERVER
+        value: smtp.gmail.com
+      - key: MAIL_PORT
+        value: "587"
+      - key: MAIL_USERNAME
+        value: groupmpharma@gmail.com
+      - key: MAIL_PASSWORD
+        sync: false
+      - key: MAIL_FROM
+        value: groupmpharma@gmail.com
+      - key: MAIL_USE_TLS
+        value: "true"

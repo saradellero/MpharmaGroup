@@ -9,6 +9,7 @@
       <div><span>Objeto</span><strong>{{ order.subject or "Sin objeto" }}</strong></div>
       <div><span>Proveedor</span><strong>{{ order.supplier or "Sin proveedor" }}</strong></div>
       <div><span>Fecha limite</span><strong>{{ order.deadline|date_display if order.deadline else "Sin fecha" }}</strong></div>
+      <div><span>Estado</span><strong>{{ order.status or "Abierto" }}</strong></div>
     </div>
 
     <div class="summary-heading order-summary-heading">
@@ -67,7 +68,9 @@
     {% endif %}
     <a class="side-action" href="{{ url_for('purchaseorder_recap', order_id=order_id) }}">Recapitulacion</a>
     <a class="side-action" href="{{ print_url }}" target="_blank">Imprimir pedido</a>
-    {% if modification_locked %}
+    {% if modification_locked and order.status == "Cerrado" %}
+      <p>El pedido esta cerrado y se encuentra en pedidos archivados. No se puede modificar.</p>
+    {% elif modification_locked %}
       <p>La fecha limite ya ha llegado. Solo el gestor puede modificar este pedido.</p>
     {% else %}
       <p>Estas cantidades son el resultado acumulado de todas las farmacias.</p>

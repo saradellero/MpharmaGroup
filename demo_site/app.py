@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 import os
+import smtplib
 from copy import deepcopy
 from datetime import date, datetime
+from email.message import EmailMessage
 from functools import wraps
 from math import ceil
 from typing import Callable
@@ -69,6 +71,11 @@ DEFAULT_FORM_MEMORY_LIMIT_BYTES = 64 * 1024 * 1024
 DEFAULT_FORM_PARTS_LIMIT = 50000
 TABLE_PAGE_SIZE = 25
 TABLE_PAGE_SIZES = (25, 50, 100)
+ORDER_STATUS_OPEN = "Abierto"
+ORDER_STATUS_CLOSED = "Cerrado"
+CLOSED_ORDER_STATUSES = frozenset(
+    {"cerrado", "cerrada", "cloture", "cloturee", "closed", "archivado"}
+)
 EDITABLE_ROUTE_PATHS = {
     "/suppliers",
     "/contacts",
@@ -99,20 +106,41 @@ def order_deadline_reached(order_id: str) -> bool:
     return False
 
 
+def normalize_order_status(value: object) -> str:
+    return (
+        ORDER_STATUS_CLOSED
+        if str(value or "").strip().lower() in CLOSED_ORDER_STATUSES
+        else ORDER_STATUS_OPEN
+    )
+
+
+def order_is_closed(order_id: str) -> bool:
+    for order in list_records("purchaseorders"):
+        if str(order.get("number", "")).strip() == str(order_id).strip():
+            return bool(order.get("archived")) or normalize_order_status(
+                order.get("status", "")
+            ) == ORDER_STATUS_CLOSED
+    return False
+
+
 def locked_purchase_order_record_ids(
     user: dict[str, object] | None,
     archived: bool = False,
 ) -> set[str]:
     """Return list-row ids that this user must no longer be able to edit."""
-    if is_admin_user(user):
-        return set()
     locked: set[str] = set()
     for order in list_records("purchaseorders", archived=archived):
         order_id = str(order.get("number", "")).strip()
         if (
             order_id
-            and deadline_has_arrived(order.get("deadline", ""))
-            and not is_order_manager(order_id, user)
+            and (
+                order_is_closed(order_id)
+                or (
+                    not is_admin_user(user)
+                    and deadline_has_arrived(order.get("deadline", ""))
+                    and not is_order_manager(order_id, user)
+                )
+            )
         ):
             locked.add(str(order.get("id", "")).strip())
     return locked
@@ -143,6 +171,19 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
     )
     app.config["DATABASE_URL"] = (
         os.environ.get("DATABASE_URL", "") if config is None else ""
+    )
+    app.config.setdefault("MAIL_SERVER", os.environ.get("MAIL_SERVER", ""))
+    app.config.setdefault("MAIL_PORT", int(os.environ.get("MAIL_PORT", "587")))
+    app.config.setdefault("MAIL_USERNAME", os.environ.get("MAIL_USERNAME", ""))
+    app.config.setdefault("MAIL_PASSWORD", os.environ.get("MAIL_PASSWORD", ""))
+    app.config.setdefault(
+        "MAIL_USE_TLS",
+        os.environ.get("MAIL_USE_TLS", "true").strip().lower()
+        not in {"0", "false", "no"},
+    )
+    app.config.setdefault(
+        "MAIL_FROM",
+        os.environ.get("MAIL_FROM", os.environ.get("MAIL_USERNAME", "")),
     )
     if config:
         app.config.update(config)
@@ -334,6 +375,11 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             fields = get_record_fields(table_key)
             existing_rows = []
             blocked_count = 0
+            closing_order_ids: list[str] = []
+            existing_orders_by_record_id = {
+                str(row.get("id", "")).strip(): row
+                for row in list_records("purchaseorders")
+            } if table_key == "purchaseorders" else {}
             for record_id in request.form.getlist("record_id"):
                 if record_id in locked_order_ids:
                     blocked_count += 1
@@ -341,12 +387,29 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 row = {"id": record_id}
                 for field in fields:
                     row[field] = request.form.get(f"record_{record_id}_{field}", "")
+                if table_key == "purchaseorders":
+                    row["status"] = normalize_order_status(row.get("status", ""))
+                    row["archived"] = (
+                        "1" if row["status"] == ORDER_STATUS_CLOSED else "0"
+                    )
+                    previous = existing_orders_by_record_id.get(str(record_id).strip(), {})
+                    previous_status = normalize_order_status(previous.get("status", ""))
+                    if (
+                        row["status"] == ORDER_STATUS_CLOSED
+                        and previous_status != ORDER_STATUS_CLOSED
+                    ):
+                        closing_order_ids.append(str(previous.get("number", "")).strip())
                 existing_rows.append(row)
 
             new_row = {field: request.form.get(f"new_{field}", "") for field in fields}
             for field in get_extra_fields(table_key):
                 if not new_row.get(field):
                     new_row[field] = "1" if archived else "0"
+            if table_key == "purchaseorders":
+                new_row["status"] = normalize_order_status(new_row.get("status", ""))
+                new_row["archived"] = (
+                    "1" if new_row["status"] == ORDER_STATUS_CLOSED else "0"
+                )
 
             save_records(table_key, existing_rows, new_row)
             flash(f"{table['title']} guardados en la base de datos.", "success")
@@ -355,6 +418,20 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                     "Los pedidos cuya fecha limite ya ha llegado no se han modificado.",
                     "error",
                 )
+            for closing_order_id in closing_order_ids:
+                result = send_order_closed_notifications(app, closing_order_id)
+                if result == "not_configured":
+                    flash(
+                        "Algunos pedidos se cerraron sin correo: falta configurar SMTP.",
+                        "error",
+                    )
+                elif result == "failed":
+                    flash(
+                        "Algunos pedidos se cerraron, pero no se pudo enviar el correo.",
+                        "error",
+                    )
+            if closing_order_ids and not archived:
+                return redirect(url_for("purchaseorders_archived"))
             return redirect(request.path)
 
         edit_requested = request.args.get("edit") == "1"
@@ -613,7 +690,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                         "updated": "",
                         "products": str(len(selected_products)),
                         "quantity": "",
-                        "status": "Ouverte",
+                        "status": ORDER_STATUS_OPEN,
                         "archived": "0",
                         "warehouse": request.form.get("warehouse", "").strip(),
                         "contact": request.form.get("contact_id", "").strip(),
@@ -672,10 +749,16 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
         selected_manager_pharmacy = request.args.get("pharmacy", "").strip()
         if (manager_mode or manager_pharmacy_mode) and not order_manager:
             abort(403)
-        order_locked = order_deadline_reached(order_id) and not order_manager
+        order_locked = order_is_closed(order_id) or (
+            order_deadline_reached(order_id) and not order_manager
+        )
         if request.method == "POST" and order_locked:
             flash(
-                "La fecha limite de este pedido ya ha llegado. Solo el gestor puede modificarlo.",
+                (
+                    "Este pedido esta cerrado y no se puede modificar."
+                    if order_is_closed(order_id)
+                    else "La fecha limite de este pedido ya ha llegado. Solo el gestor puede modificarlo."
+                ),
                 "error",
             )
             return redirect(url_for("purchaseorder_edit", order_id=order_id))
@@ -788,9 +871,33 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                                         "quantity": quantity,
                                     }
                                 )
-                update_purchase_order(order_id, manager_order_values_from_form())
+                was_closed = order_is_closed(order_id)
+                manager_values = manager_order_values_from_form()
+                manager_values["status"] = normalize_order_status(
+                    manager_values.get("status", "")
+                )
+                manager_values["archived"] = (
+                    "1"
+                    if manager_values["status"] == ORDER_STATUS_CLOSED
+                    else "0"
+                )
+                update_purchase_order(order_id, manager_values)
                 replace_order_products(order_id, manager_products)
                 sync_purchase_order_product_totals(order_id)
+                if manager_values["status"] == ORDER_STATUS_CLOSED:
+                    notify_result = "already_closed" if was_closed else send_order_closed_notifications(app, order_id)
+                    flash("Pedido cerrado y enviado a pedidos archivados.", "success")
+                    if notify_result == "not_configured":
+                        flash(
+                            "El cierre se guardo, pero no se envio el correo: falta configurar SMTP.",
+                            "error",
+                        )
+                    elif notify_result == "failed":
+                        flash(
+                            "El pedido se cerro, pero no se pudo enviar el correo de notificacion.",
+                            "error",
+                        )
+                    return redirect(url_for("purchaseorders_archived"))
                 flash("Pedido actualizado como gestor.", "success")
                 return redirect(url_for("purchaseorder_edit", order_id=order_id))
 
@@ -820,8 +927,8 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                     else None
                 ),
                 manager_url=(
-                    url_for("purchaseorder_edit", order_id=order_id, mode="manager")
-                    if order_manager
+                url_for("purchaseorder_edit", order_id=order_id, mode="manager")
+                    if order_manager and not order_locked
                     else None
                 ),
                 print_url=url_for("purchaseorder_print", order_id=order_id),
@@ -1311,6 +1418,97 @@ def build_order_recap(order_id: str) -> dict[str, object]:
         "grand_quantity": format_quantity(grand_quantity),
         "grand_total": format_invoice_number(grand_total),
     }
+
+
+def send_order_closed_notifications(app: Flask, order_id: str) -> str:
+    """Send the closed-order recap and current report balance to active members."""
+    mail_server = str(app.config.get("MAIL_SERVER", "")).strip()
+    mail_from = str(app.config.get("MAIL_FROM", "")).strip()
+    if not mail_server or not mail_from:
+        return "not_configured"
+
+    recipients = sorted(
+        {
+            str(user.get("email", "")).strip()
+            for user in list_records("users")
+            if str(user.get("status", "")).strip().lower()
+            not in {"inactivo", "inactif", "inactive"}
+            and "@" in str(user.get("email", ""))
+        }
+    )
+    if not recipients:
+        return "no_recipients"
+
+    order = next(
+        (
+            row
+            for row in list_records("purchaseorders")
+            if str(row.get("number", "")).strip() == str(order_id).strip()
+        ),
+        {},
+    )
+    recap = build_order_recap(order_id)
+    year = report_order_year(order) or str(date.today().year)
+    balance = build_report_balance(year, str(order.get("warehouse", "")).strip())
+    pharmacies = recap.get("pharmacies", [])
+    lines = [
+        f"El pedido {order_id} ha sido cerrado.",
+        f"Objeto: {str(order.get('subject', '')).strip() or 'Sin objeto'}",
+        f"Proveedor: {str(order.get('supplier', '')).strip() or 'Sin proveedor'}",
+        "",
+        "RECAPITULACION DEL PEDIDO",
+    ]
+    for row in recap.get("rows", []):
+        amounts = row.get("amounts", {})
+        pharmacy_text = ", ".join(
+            f"{pharmacy}: {amounts.get(pharmacy, '0')}"
+            for pharmacy in pharmacies
+        )
+        lines.append(
+            f"- {row.get('name', '')}: {pharmacy_text}; "
+            f"cantidad {row.get('quantity', '0')}; total {row.get('total', '0')}"
+        )
+    lines.extend(
+        [
+            f"Total unidades: {recap.get('grand_quantity', '0')}",
+            f"Total PPH: {recap.get('grand_total', '0')}",
+            "",
+            f"BALANCE ACTUAL DEL REPORTE ({year})",
+        ]
+    )
+    if balance:
+        for entry in balance:
+            lines.append(
+                f"- {entry.get('pharmacist', '')}: "
+                f"aportado {entry.get('supported', '0 MAD')}; "
+                f"consumido {entry.get('consumed', '0 MAD')}; "
+                f"saldo {entry.get('diff', '0 MAD')}"
+            )
+    else:
+        lines.append("- No hay datos de balance para el periodo seleccionado.")
+
+    message = EmailMessage()
+    message["Subject"] = f"Pedido {order_id} cerrado - recapitulacion y balance"
+    message["From"] = mail_from
+    message["To"] = ", ".join(recipients)
+    message.set_content("\n".join(lines))
+
+    try:
+        with smtplib.SMTP(
+            mail_server,
+            int(app.config.get("MAIL_PORT", 587)),
+            timeout=15,
+        ) as smtp:
+            if app.config.get("MAIL_USE_TLS", True):
+                smtp.starttls()
+            username = str(app.config.get("MAIL_USERNAME", "")).strip()
+            password = str(app.config.get("MAIL_PASSWORD", ""))
+            if username:
+                smtp.login(username, password)
+            smtp.send_message(message)
+    except (OSError, smtplib.SMTPException, ValueError):
+        return "failed"
+    return "sent"
 
 
 def normalize_report_warehouse(value: object) -> str:
@@ -1936,6 +2134,7 @@ def manager_order_values_from_form() -> dict[str, str]:
         "payment_timeframe": request.form.get("payment_timeframe", "").strip(),
         "delivery_timeframe": request.form.get("delivery_timeframe", "").strip(),
         "delivery_transporter": request.form.get("delivery_transporter", "").strip(),
+        "status": normalize_order_status(request.form.get("order_status", "")),
         "payment_methods": ",".join(
             request.form.getlist("accepted_payment_methods[]")
         ),
@@ -2174,6 +2373,8 @@ def build_order_detail(
                 "delivery_timeframe": "",
                 "delivery_transporter": "",
                 "payment_methods": [],
+                "status": ORDER_STATUS_OPEN,
+                "archived": False,
                 "products": [],
                 "manager": "",
             }
@@ -2199,6 +2400,8 @@ def build_order_detail(
             order["delivery_transporter"] = str(
                 row.get("delivery_transporter", "")
             ).strip()
+            order["status"] = normalize_order_status(row.get("status", ""))
+            order["archived"] = bool(row.get("archived"))
             order["payment_methods"] = [
                 method.strip()
                 for method in str(row.get("payment_methods", "")).split(",")

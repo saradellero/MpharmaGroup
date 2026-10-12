@@ -35,6 +35,14 @@
       {{ ui.input_field("payment_timeframe", "Plazo de pago", order.payment_timeframe) }}
       {{ ui.input_field("delivery_timeframe", "Plazo de entrega", order.delivery_timeframe) }}
       {{ ui.input_field("delivery_transporter", "Transportista", order.delivery_transporter) }}
+      <label class="form-field">
+        <span>Estado del pedido</span>
+        <select class="input" name="order_status">
+          <option value="Abierto"{% if order.status != "Cerrado" %} selected{% endif %}>Abierto</option>
+          <option value="Cerrado"{% if order.status == "Cerrado" %} selected{% endif %}>Cerrado</option>
+        </select>
+        <small class="bulk-upload__hint">Al cerrarlo se bloqueara la edicion, se archivara y se notificara a los miembros.</small>
+      </label>
       <div class="payment-methods">
         {% for method in ["cash", "check", "debit_card", "bill_of_exchange", "other"] %}
           <label><input type="checkbox" name="accepted_payment_methods[]" value="{{ method }}" {% if method in order.payment_methods %}checked{% endif %}> {{ method }}</label>

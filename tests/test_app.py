@@ -3,6 +3,7 @@ import uuid
 from datetime import date
 from io import BytesIO
 from pathlib import Path
+from unittest.mock import patch
 
 from openpyxl import Workbook
 
@@ -1496,6 +1497,86 @@ class AppTests(unittest.TestCase):
                 row for row in list_records("purchaseorders") if row["number"] == "109020"
             )
         self.assertEqual(order["subject"], "Pedido actualizado por el gestor")
+
+    def test_manager_can_close_expired_order_and_it_becomes_immutable_archived(self):
+        with self.app.app_context():
+            append_records(
+                "purchaseorders",
+                [
+                    {
+                        "number": "109023",
+                        "subject": "Pedido para cerrar",
+                        "manager": "Pharmacie Atlas",
+                        "supplier": "Proveedor cierre",
+                        "deadline": date.today().isoformat(),
+                        "updated": "",
+                        "products": "0",
+                        "quantity": "",
+                        "status": "Abierto",
+                        "archived": "0",
+                    }
+                ],
+            )
+
+        self.login_pharmacy()
+        manager_response = self.client.get(
+            "/purchaseorder/edit/109023?mode=manager"
+        )
+        self.assertEqual(manager_response.status_code, 200)
+        self.assertIn(b'name="order_status"', manager_response.data)
+        self.assertIn(b">Abierto<", manager_response.data)
+        self.assertIn(b">Cerrado<", manager_response.data)
+
+        self.app.config.update(
+            MAIL_SERVER="smtp.test",
+            MAIL_PORT=25,
+            MAIL_FROM="no-reply@sobrus.test",
+            MAIL_USE_TLS=False,
+        )
+        with patch("demo_site.app.smtplib.SMTP") as smtp_factory:
+            close_response = self.client.post(
+                "/purchaseorder/edit/109023?mode=manager",
+                data={
+                    "owner_id": "Pharmacie Atlas",
+                    "warehouse": "Principal",
+                    "subject": "Pedido para cerrar",
+                    "deadline": date.today().strftime("%d/%m/%Y"),
+                    "supplier_id": "Proveedor cierre",
+                    "order_status": "Cerrado",
+                },
+                follow_redirects=True,
+            )
+            smtp = smtp_factory.return_value.__enter__.return_value
+            smtp.send_message.assert_called_once()
+            email = smtp.send_message.call_args.args[0]
+            self.assertIn("RECAPITULACION DEL PEDIDO", email.get_content())
+            self.assertIn("BALANCE ACTUAL DEL REPORTE", email.get_content())
+        self.assertEqual(close_response.status_code, 200)
+        self.assertIn(b"Pedidos", close_response.data)
+        self.assertIn(b"Cerrado", close_response.data)
+
+        with self.app.app_context():
+            order = next(
+                row for row in list_records("purchaseorders") if row["number"] == "109023"
+            )
+        self.assertEqual(order["status"], "Cerrado")
+        self.assertTrue(order["archived"])
+
+        blocked = self.client.post(
+            "/purchaseorder/edit/109023?mode=manager",
+            data={
+                "owner_id": "Pharmacie Atlas",
+                "subject": "No debe cambiar",
+                "order_status": "Abierto",
+            },
+            follow_redirects=True,
+        )
+        self.assertIn(b"pedido esta cerrado", blocked.data)
+        with self.app.app_context():
+            order = next(
+                row for row in list_records("purchaseorders") if row["number"] == "109023"
+            )
+        self.assertEqual(order["subject"], "Pedido para cerrar")
 
     def test_admin_pharmacy_scope_starts_at_zero_when_another_pharmacy_has_lines(self):
         with self.app.app_context():

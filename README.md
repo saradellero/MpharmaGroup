@@ -45,6 +45,8 @@ El login valida usuarios guardados en SQLite. Credenciales iniciales:
 
 El administrador puede editar catalogos, farmacias, proveedores, ofertas y pedidos. Los usuarios de farmacia pueden visualizar todos los modulos, pero solo ven botones de edicion en pedidos.
 
+Los pedidos tienen estado **Abierto/Cerrado** en la edicion del gestor. Un pedido abierto sigue siendo editable por su gestor aunque haya vencido la fecha limite. Al cerrarlo queda bloqueado para todos, pasa automaticamente a **Archivados** y se envia a los miembros activos un correo con la recapitulacion y el balance actual del reporte. Para activar el correo configura `MAIL_SERVER`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM` y `MAIL_USE_TLS`.
+
 ## Rutas principales
 
 - `/auth/login`

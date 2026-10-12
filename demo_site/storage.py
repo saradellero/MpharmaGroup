@@ -51,6 +51,10 @@ EXTRA_FIELDS = {
     ),
 }
 
+CLOSED_ORDER_STATUSES = frozenset(
+    {"cerrado", "cerrada", "cloture", "cloturee", "closed", "archivado"}
+)
+
 
 class PostgresConnection:
     """Small DB-API compatibility layer for the existing ? placeholders."""
@@ -805,4 +809,6 @@ def deserialize_row(table_key: str, row: dict[str, object]) -> dict[str, object]
         row[field] = normalize_date_value(row.get(field, ""))
     if table_key == "purchaseorders":
         row["archived"] = str(row.get("archived", "")).lower() in ("1", "true", "yes")
+        status = str(row.get("status", "")).strip().lower()
+        row["status"] = "Cerrado" if status in CLOSED_ORDER_STATUSES else "Abierto"
     return row
