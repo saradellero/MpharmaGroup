@@ -1573,6 +1573,18 @@ class AppTests(unittest.TestCase):
             )
             self.assertEqual(recap_workbook.sheetnames, ["Recapitulacion"])
             self.assertEqual(balance_workbook.sheetnames, ["Balance"])
+            balance_values = [
+                str(cell)
+                for row in balance_workbook["Balance"].iter_rows(values_only=True)
+                for cell in row
+                if cell is not None
+            ]
+            current_year = str(date.today().year)
+            self.assertIn(f"BALANCE ACTUAL {current_year}", balance_values)
+            self.assertIn(
+                f"ACUMULADO {int(current_year) - 1}-{current_year}",
+                balance_values,
+            )
         self.assertEqual(close_response.status_code, 200)
         self.assertIn(b"Pedidos", close_response.data)
         self.assertIn(b"Cerrado", close_response.data)
