@@ -1,16 +1,21 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 from copy import deepcopy
 from datetime import date, datetime
 from functools import wraps
+from io import BytesIO
 from math import ceil
 from typing import Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
+
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
 
 from flask import (
     Flask,
@@ -1427,6 +1432,126 @@ def build_order_recap(order_id: str) -> dict[str, object]:
     }
 
 
+def _excel_value(value: object) -> object:
+    """Convert the app's formatted numeric strings to real Excel numbers."""
+    parsed = parse_optional_number(str(value).replace("MAD", ""))
+    return parsed if parsed is not None else value
+
+
+def _format_excel_sheet(sheet: object, header_row: int = 1) -> None:
+    """Apply compact, readable formatting to a generated worksheet."""
+    sheet.freeze_panes = f"A{header_row + 1}"
+    for cell in sheet[header_row]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="1F4E78")
+    for column in sheet.columns:
+        values = [str(cell.value or "") for cell in column]
+        width = min(max(max((len(value) for value in values), default=10) + 2, 12), 36)
+        sheet.column_dimensions[column[0].column_letter].width = width
+
+
+def build_order_recap_workbook(
+    order_id: str,
+    order: dict[str, object],
+    recap: dict[str, object],
+) -> BytesIO:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Recapitulacion"
+    pharmacies = [str(value) for value in recap.get("pharmacies", [])]
+    sheet.append(
+        [
+            "Producto",
+            "Cantidad",
+            "PPH",
+            *pharmacies,
+            "Total",
+        ]
+    )
+    for row in recap.get("rows", []):
+        amounts = row.get("amounts", {})
+        sheet.append(
+            [
+                row.get("name", ""),
+                _excel_value(row.get("quantity", "")),
+                _excel_value(row.get("pph", "")),
+                *[_excel_value(amounts.get(pharmacy, "")) for pharmacy in pharmacies],
+                _excel_value(row.get("total", "")),
+            ]
+        )
+    totals = recap.get("totals", {})
+    sheet.append(
+        [
+            "TOTAL",
+            _excel_value(recap.get("grand_quantity", "")),
+            "",
+            *[_excel_value(totals.get(pharmacy, "")) for pharmacy in pharmacies],
+            _excel_value(recap.get("grand_total", "")),
+        ]
+    )
+    sheet.insert_rows(1, 3)
+    sheet.cell(1, 1, "Pedido")
+    sheet.cell(1, 2, str(order_id))
+    sheet.cell(2, 1, "Objeto")
+    sheet.cell(2, 2, str(order.get("subject", "")).strip())
+    sheet.cell(3, 1, "Proveedor")
+    sheet.cell(3, 2, str(order.get("supplier", "")).strip())
+    for row in sheet.iter_rows(min_row=4):
+        for cell in row:
+            if isinstance(cell.value, (int, float)):
+                cell.number_format = '#,##0.00'
+    _format_excel_sheet(sheet, header_row=4)
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return output
+
+
+def build_report_balance_workbook(
+    year: str,
+    warehouse: str,
+    balance: list[dict[str, str]],
+) -> BytesIO:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Balance"
+    sheet.append(["Miembro / farmacia", "Aportado (MAD)", "Consumido (MAD)", "Saldo (MAD)"])
+    for entry in balance:
+        sheet.append(
+            [
+                entry.get("pharmacist", ""),
+                _excel_value(entry.get("supported", "")),
+                _excel_value(entry.get("consumed", "")),
+                _excel_value(entry.get("diff", "")),
+            ]
+        )
+    data_end_row = sheet.max_row
+    sheet.append(
+        [
+            "TOTAL",
+            f"=SUM(B2:B{data_end_row})",
+            f"=SUM(C2:C{data_end_row})",
+            f"=SUM(D2:D{data_end_row})",
+        ]
+    )
+    sheet.insert_rows(1, 2)
+    sheet.cell(1, 1, "Año")
+    sheet.cell(1, 2, str(year))
+    sheet.cell(2, 1, "Almacén")
+    sheet.cell(2, 2, warehouse or "Todos")
+    for row in sheet.iter_rows(min_row=3):
+        for cell in row:
+            if isinstance(cell.value, (int, float)) or (
+                isinstance(cell.value, str) and cell.value.startswith("=SUM(")
+            ):
+                cell.number_format = '#,##0.00'
+    _format_excel_sheet(sheet, header_row=3)
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return output
+
+
 def send_order_closed_notifications(app: Flask, order_id: str) -> str:
     """Send the closed-order recap and current report balance to active members."""
     brevo_api_key = str(app.config.get("BREVO_API_KEY", "")).strip()
@@ -1494,11 +1619,27 @@ def send_order_closed_notifications(app: Flask, order_id: str) -> str:
     else:
         lines.append("- No hay datos de balance para el periodo seleccionado.")
 
+    recap_workbook = build_order_recap_workbook(order_id, order, recap)
+    balance_workbook = build_report_balance_workbook(
+        year,
+        str(order.get("warehouse", "")).strip(),
+        balance,
+    )
     payload = {
         "sender": {"email": mail_from},
         "to": [{"email": recipient} for recipient in recipients],
         "subject": f"Pedido {order_id} cerrado - recapitulacion y balance",
         "textContent": "\n".join(lines),
+        "attachment": [
+            {
+                "name": f"pedido-{order_id}-recapitulacion.xlsx",
+                "content": base64.b64encode(recap_workbook.read()).decode("ascii"),
+            },
+            {
+                "name": f"pedido-{order_id}-balance.xlsx",
+                "content": base64.b64encode(balance_workbook.read()).decode("ascii"),
+            },
+        ],
     }
     api_request = Request(
         str(

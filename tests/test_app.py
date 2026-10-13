@@ -1,3 +1,4 @@
+import base64
 import json
 import unittest
 import uuid
@@ -6,7 +7,7 @@ from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 
 from demo_site.app import build_manager_options, build_order_manager_matrix, build_order_recap, build_order_summary, create_app
 from demo_site.app import sync_purchase_order_product_totals
@@ -1555,6 +1556,23 @@ class AppTests(unittest.TestCase):
             self.assertEqual(payload["sender"]["email"], "no-reply@sobrus.test")
             self.assertIn("RECAPITULACION DEL PEDIDO", payload["textContent"])
             self.assertIn("BALANCE ACTUAL DEL REPORTE", payload["textContent"])
+            self.assertEqual(
+                [attachment["name"] for attachment in payload["attachment"]],
+                [
+                    "pedido-109023-recapitulacion.xlsx",
+                    "pedido-109023-balance.xlsx",
+                ],
+            )
+            recap_workbook = load_workbook(
+                BytesIO(base64.b64decode(payload["attachment"][0]["content"])),
+                read_only=True,
+            )
+            balance_workbook = load_workbook(
+                BytesIO(base64.b64decode(payload["attachment"][1]["content"])),
+                read_only=True,
+            )
+            self.assertEqual(recap_workbook.sheetnames, ["Recapitulacion"])
+            self.assertEqual(balance_workbook.sheetnames, ["Balance"])
         self.assertEqual(close_response.status_code, 200)
         self.assertIn(b"Pedidos", close_response.data)
         self.assertIn(b"Cerrado", close_response.data)
