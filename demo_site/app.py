@@ -1510,79 +1510,103 @@ def build_order_recap_workbook(
 def build_report_balance_workbook(
     year: str,
     warehouse: str,
-    balance: list[dict[str, str]],
-    previous_year: str,
-    accumulated_balance: list[dict[str, str]],
+    report_detail: dict[str, object],
 ) -> BytesIO:
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "Balance"
     sheet.sheet_view.showGridLines = False
+    pharmacies = [str(value) for value in report_detail.get("pharmacies", [])]
+    opening_row = report_detail.get("opening_row", {})
+    totals = report_detail.get("totals", {})
+
+    def detail_value(cell: object) -> float:
+        if isinstance(cell, dict):
+            return float(cell.get("value", 0.0) or 0.0)
+        return 0.0
+
+    sheet.append(["Ejercicio", str(year)])
     sheet.append(["Almacén", warehouse or "Todos"])
-    sheet.append(["Periodo actual", str(year)])
-    sheet.append(["Periodo acumulado", f"{previous_year}-{year}"])
+    sheet.append([f"DETALLE POR PEDIDO PARA {year}"])
     sheet.append([])
-
-    header_rows: list[int] = []
-    section_rows: list[int] = []
-
-    def append_balance_block(title: str, entries: list[dict[str, str]]) -> None:
-        section_rows.append(sheet.max_row + 1)
-        sheet.append([title])
-        header_rows.append(sheet.max_row + 1)
-        sheet.append(
-            ["Miembro / farmacia", "Aportado (MAD)", "Consumido (MAD)", "Saldo (MAD)"]
-        )
-        data_start_row = sheet.max_row + 1
-        for entry in entries:
-            sheet.append(
-                [
-                    entry.get("pharmacist", ""),
-                    _excel_value(entry.get("supported", "")),
-                    _excel_value(entry.get("consumed", "")),
-                    _excel_value(entry.get("diff", "")),
-                ]
-            )
-        data_end_row = sheet.max_row
-        if data_end_row >= data_start_row:
-            totals = [
-                f"=SUM(B{data_start_row}:B{data_end_row})",
-                f"=SUM(C{data_start_row}:C{data_end_row})",
-                f"=SUM(D{data_start_row}:D{data_end_row})",
-            ]
-        else:
-            totals = [0, 0, 0]
-        sheet.append(["TOTAL", *totals])
-        for cell in sheet[sheet.max_row][1:]:
-            cell.number_format = '#,##0.00'
-        sheet.append([])
-
-    append_balance_block(f"BALANCE ACTUAL {year}", balance)
-    append_balance_block(
-        f"ACUMULADO {previous_year}-{year}",
-        accumulated_balance,
+    header_row = sheet.max_row + 1
+    sheet.append(
+        [
+            "N.º pedido",
+            "Fecha",
+            "Laboratorio",
+            "PPH remisé",
+            *pharmacies,
+            "Total",
+            "G. LABO",
+        ]
     )
 
-    section_fill = PatternFill("solid", fgColor="D9EAF7")
-    for row_number in section_rows:
-        for cell in sheet[row_number][:4]:
-            cell.font = Font(bold=True, color="1F1F1F")
-            cell.fill = section_fill
-    for row_number in header_rows:
-        for cell in sheet[row_number][:4]:
-            cell.font = Font(bold=True, color="FFFFFF")
-            cell.fill = PatternFill("solid", fgColor="1F4E78")
-    for row in sheet.iter_rows():
+    opening_pharmacy_values = opening_row.get("pharmacy_values", {}) if isinstance(opening_row, dict) else {}
+    sheet.append(
+        [
+            "Saldo acumulado anterior",
+            "",
+            "",
+            detail_value(opening_row.get("pph_remised", {})) if isinstance(opening_row, dict) else 0.0,
+            *[
+                detail_value(opening_pharmacy_values.get(pharmacy, {}))
+                for pharmacy in pharmacies
+            ],
+            detail_value(opening_row.get("total", {})) if isinstance(opening_row, dict) else 0.0,
+            detail_value(opening_row.get("g_labo", {})) if isinstance(opening_row, dict) else 0.0,
+        ]
+    )
+
+    for row in report_detail.get("rows", []):
+        pharmacy_values = row.get("pharmacy_values", {})
+        sheet.append(
+            [
+                str(row.get("number", "")),
+                format_date_for_display(row.get("date", "")),
+                str(row.get("supplier", "")),
+                detail_value(row.get("pph_remised", {})),
+                *[
+                    detail_value(pharmacy_values.get(pharmacy, {}))
+                    for pharmacy in pharmacies
+                ],
+                detail_value(row.get("total", {})),
+                detail_value(row.get("g_labo", {})),
+            ]
+        )
+
+    total_pharmacy_values = totals.get("pharmacy_values", {}) if isinstance(totals, dict) else {}
+    sheet.append(
+        [
+            "Balance acumulado",
+            "",
+            "",
+            detail_value(totals.get("pph_remised", {})) if isinstance(totals, dict) else 0.0,
+            *[
+                detail_value(total_pharmacy_values.get(pharmacy, {}))
+                for pharmacy in pharmacies
+            ],
+            detail_value(totals.get("total", {})) if isinstance(totals, dict) else 0.0,
+            detail_value(totals.get("g_labo", {})) if isinstance(totals, dict) else 0.0,
+        ]
+    )
+
+    for cell in sheet[header_row]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="1F4E78")
+    opening_row_number = header_row + 1
+    total_row_number = sheet.max_row
+    for cell in sheet[opening_row_number]:
+        cell.font = Font(bold=True, color="1F1F1F")
+        cell.fill = PatternFill("solid", fgColor="FFF2B2")
+    for cell in sheet[total_row_number]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="E91E1E")
+    for row in sheet.iter_rows(min_row=header_row + 1):
         for cell in row:
-            if isinstance(cell.value, (int, float)) or (
-                isinstance(cell.value, str) and cell.value.startswith("=SUM(")
-            ):
-                cell.number_format = '#,##0.00'
-    for row_number in range(1, sheet.max_row + 1):
-        if sheet.cell(row_number, 1).value == "TOTAL":
-            for cell in sheet[row_number][:4]:
-                cell.font = Font(bold=True)
-    sheet.freeze_panes = "A6"
+            if isinstance(cell.value, (int, float)):
+                cell.number_format = '#,##0.00;[Red]-#,##0.00'
+    sheet.freeze_panes = f"A{header_row + 1}"
     for column in sheet.columns:
         values = [str(cell.value or "") for cell in column]
         width = min(max(max((len(value) for value in values), default=10) + 2, 12), 36)
@@ -1624,9 +1648,7 @@ def send_order_closed_notifications(app: Flask, order_id: str) -> str:
     year = report_order_year(order) or str(date.today().year)
     warehouse = str(order.get("warehouse", "")).strip()
     balance = build_report_balance(year, warehouse)
-    previous_year = str(int(year) - 1) if str(year).isdigit() else str(year)
-    previous_balance = build_report_balance(previous_year, warehouse)
-    accumulated_balance = merge_report_balances(previous_balance, balance)
+    report_detail = build_report_detail(year, warehouse, list_report_opening_balances())
     pharmacies = recap.get("pharmacies", [])
     lines = [
         f"El pedido {order_id} ha sido cerrado.",
@@ -1668,9 +1690,7 @@ def send_order_closed_notifications(app: Flask, order_id: str) -> str:
     balance_workbook = build_report_balance_workbook(
         year,
         warehouse,
-        balance,
-        previous_year,
-        accumulated_balance,
+        report_detail,
     )
     payload = {
         "sender": {"email": mail_from},
@@ -2013,52 +2033,6 @@ def report_number(value: float) -> str:
 
 def report_money(value: float) -> str:
     return f"{report_number(value)} MAD"
-
-
-def merge_report_balances(
-    *balances: list[dict[str, str]],
-) -> list[dict[str, str]]:
-    """Combine yearly balances into one cumulative balance by member/pharmacy."""
-    merged: dict[str, dict[str, object]] = {}
-    for balance in balances:
-        for entry in balance:
-            label = str(entry.get("pharmacist", "")).strip()
-            key = label.casefold()
-            if not key:
-                continue
-            row = merged.setdefault(
-                key,
-                {
-                    "pharmacist": label,
-                    "user_id": str(entry.get("user_id", "")),
-                    "supported": 0.0,
-                    "consumed": 0.0,
-                    "diff": 0.0,
-                },
-            )
-            row["supported"] = float(row.get("supported", 0.0)) + (
-                parse_optional_number(str(entry.get("supported", "")).replace("MAD", ""))
-                or 0.0
-            )
-            row["consumed"] = float(row.get("consumed", 0.0)) + (
-                parse_optional_number(str(entry.get("consumed", "")).replace("MAD", ""))
-                or 0.0
-            )
-            row["diff"] = float(row.get("diff", 0.0)) + (
-                parse_optional_number(str(entry.get("diff", "")).replace("MAD", ""))
-                or 0.0
-            )
-
-    return [
-        {
-            "pharmacist": str(row.get("pharmacist", "")),
-            "user_id": str(row.get("user_id", "")),
-            "supported": report_money(float(row.get("supported", 0.0))),
-            "consumed": report_money(float(row.get("consumed", 0.0))),
-            "diff": report_money(float(row.get("diff", 0.0))),
-        }
-        for row in sorted(merged.values(), key=lambda item: str(item.get("pharmacist", "")).casefold())
-    ]
 
 
 def build_report_balance(year: str, warehouse: str) -> list[dict[str, str]]:

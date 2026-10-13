@@ -1580,11 +1580,10 @@ class AppTests(unittest.TestCase):
                 if cell is not None
             ]
             current_year = str(date.today().year)
-            self.assertIn(f"BALANCE ACTUAL {current_year}", balance_values)
-            self.assertIn(
-                f"ACUMULADO {int(current_year) - 1}-{current_year}",
-                balance_values,
-            )
+            self.assertIn(f"DETALLE POR PEDIDO PARA {current_year}", balance_values)
+            self.assertIn("Saldo acumulado anterior", balance_values)
+            self.assertIn("Balance acumulado", balance_values)
+            self.assertIn("N.º pedido", balance_values)
         self.assertEqual(close_response.status_code, 200)
         self.assertIn(b"Pedidos", close_response.data)
         self.assertIn(b"Cerrado", close_response.data)
