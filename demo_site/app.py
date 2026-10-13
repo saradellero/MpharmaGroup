@@ -134,7 +134,7 @@ def locked_purchase_order_record_ids(
         if (
             order_id
             and (
-                order_is_closed(order_id)
+                (order_is_closed(order_id) and not is_admin_user(user))
                 or (
                     not is_admin_user(user)
                     and deadline_has_arrived(order.get("deadline", ""))
@@ -749,7 +749,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
         selected_manager_pharmacy = request.args.get("pharmacy", "").strip()
         if (manager_mode or manager_pharmacy_mode) and not order_manager:
             abort(403)
-        order_locked = order_is_closed(order_id) or (
+        order_locked = (order_is_closed(order_id) and not is_admin_user(user)) or (
             order_deadline_reached(order_id) and not order_manager
         )
         if request.method == "POST" and order_locked:
@@ -934,6 +934,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 print_url=url_for("purchaseorder_print", order_id=order_id),
                 current_pharmacy=pharmacy_scope,
                 modification_locked=order_locked,
+                can_reopen=is_admin_user(user),
             )
 
         if manager_pharmacy_mode:
@@ -1507,6 +1508,7 @@ def send_order_closed_notifications(app: Flask, order_id: str) -> str:
                 smtp.login(username, password)
             smtp.send_message(message)
     except (OSError, smtplib.SMTPException, ValueError):
+        app.logger.exception("No se pudo enviar la notificacion SMTP del pedido %s", order_id)
         return "failed"
     return "sent"
 

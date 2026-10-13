@@ -64,7 +64,11 @@
       <span class="side-action disabled">Modificar pedido bloqueado</span>
     {% endif %}
     {% if manager_url %}
-      <a class="side-action" href="{{ manager_url }}">Modificar como gestor</a>
+      {% if order.status == "Cerrado" and can_reopen %}
+        <a class="side-action" href="{{ manager_url }}">Reabrir pedido</a>
+      {% else %}
+        <a class="side-action" href="{{ manager_url }}">Modificar como gestor</a>
+      {% endif %}
     {% endif %}
     <a class="side-action" href="{{ url_for('purchaseorder_recap', order_id=order_id) }}">Recapitulacion</a>
     <a class="side-action" href="{{ print_url }}" target="_blank">Imprimir pedido</a>

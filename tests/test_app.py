@@ -1578,6 +1578,60 @@ class AppTests(unittest.TestCase):
             )
         self.assertEqual(order["subject"], "Pedido para cerrar")
 
+    def test_only_admin_can_reopen_a_closed_order(self):
+        with self.app.app_context():
+            append_records(
+                "purchaseorders",
+                [
+                    {
+                        "number": "109024",
+                        "subject": "Pedido cerrado para reabrir",
+                        "manager": "Pharmacie Atlas",
+                        "supplier": "Proveedor reapertura",
+                        "deadline": date.today().isoformat(),
+                        "updated": "",
+                        "products": "0",
+                        "quantity": "",
+                        "status": "Cerrado",
+                        "archived": "1",
+                    }
+                ],
+            )
+
+        self.login_pharmacy()
+        pharmacy_response = self.client.get(
+            "/purchaseorder/edit/109024?mode=manager"
+        )
+        self.assertEqual(pharmacy_response.status_code, 200)
+        self.assertNotIn(b'name="order_status"', pharmacy_response.data)
+
+        self.login()
+        admin_summary = self.client.get("/purchaseorder/edit/109024")
+        self.assertEqual(admin_summary.status_code, 200)
+        self.assertIn(b"Reabrir pedido", admin_summary.data)
+
+        reopen_response = self.client.post(
+            "/purchaseorder/edit/109024?mode=manager",
+            data={
+                "owner_id": "Pharmacie Atlas",
+                "warehouse": "Principal",
+                "subject": "Pedido cerrado para reabrir",
+                "deadline": date.today().strftime("%d/%m/%Y"),
+                "supplier_id": "Proveedor reapertura",
+                "order_status": "Abierto",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(reopen_response.status_code, 200)
+        self.assertIn(b"Pedido actualizado como gestor", reopen_response.data)
+
+        with self.app.app_context():
+            order = next(
+                row for row in list_records("purchaseorders") if row["number"] == "109024"
+            )
+        self.assertEqual(order["status"], "Abierto")
+        self.assertFalse(order["archived"])
+
     def test_admin_pharmacy_scope_starts_at_zero_when_another_pharmacy_has_lines(self):
         with self.app.app_context():
             append_records(
