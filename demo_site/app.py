@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
-import smtplib
 from copy import deepcopy
 from datetime import date, datetime
-from email.message import EmailMessage
 from functools import wraps
 from math import ceil
 from typing import Callable
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse
+from urllib.request import Request, urlopen
 
 from flask import (
     Flask,
@@ -176,6 +177,11 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
     app.config.setdefault("MAIL_PORT", int(os.environ.get("MAIL_PORT", "587")))
     app.config.setdefault("MAIL_USERNAME", os.environ.get("MAIL_USERNAME", ""))
     app.config.setdefault("MAIL_PASSWORD", os.environ.get("MAIL_PASSWORD", ""))
+    app.config.setdefault("BREVO_API_KEY", os.environ.get("BREVO_API_KEY", ""))
+    app.config.setdefault(
+        "BREVO_API_URL",
+        os.environ.get("BREVO_API_URL", "https://api.brevo.com/v3/smtp/email"),
+    )
     app.config.setdefault(
         "MAIL_USE_TLS",
         os.environ.get("MAIL_USE_TLS", "true").strip().lower()
@@ -422,7 +428,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 result = send_order_closed_notifications(app, closing_order_id)
                 if result == "not_configured":
                     flash(
-                        "Algunos pedidos se cerraron sin correo: falta configurar SMTP.",
+                        "Algunos pedidos se cerraron sin correo: falta configurar Brevo.",
                         "error",
                     )
                 elif result == "failed":
@@ -889,7 +895,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                     flash("Pedido cerrado y enviado a pedidos archivados.", "success")
                     if notify_result == "not_configured":
                         flash(
-                            "El cierre se guardo, pero no se envio el correo: falta configurar SMTP.",
+                            "El cierre se guardo, pero no se envio el correo: falta configurar Brevo.",
                             "error",
                         )
                     elif notify_result == "failed":
@@ -1423,9 +1429,9 @@ def build_order_recap(order_id: str) -> dict[str, object]:
 
 def send_order_closed_notifications(app: Flask, order_id: str) -> str:
     """Send the closed-order recap and current report balance to active members."""
-    mail_server = str(app.config.get("MAIL_SERVER", "")).strip()
+    brevo_api_key = str(app.config.get("BREVO_API_KEY", "")).strip()
     mail_from = str(app.config.get("MAIL_FROM", "")).strip()
-    if not mail_server or not mail_from:
+    if not brevo_api_key or not mail_from:
         return "not_configured"
 
     recipients = sorted(
@@ -1488,27 +1494,33 @@ def send_order_closed_notifications(app: Flask, order_id: str) -> str:
     else:
         lines.append("- No hay datos de balance para el periodo seleccionado.")
 
-    message = EmailMessage()
-    message["Subject"] = f"Pedido {order_id} cerrado - recapitulacion y balance"
-    message["From"] = mail_from
-    message["To"] = ", ".join(recipients)
-    message.set_content("\n".join(lines))
+    payload = {
+        "sender": {"email": mail_from},
+        "to": [{"email": recipient} for recipient in recipients],
+        "subject": f"Pedido {order_id} cerrado - recapitulacion y balance",
+        "textContent": "\n".join(lines),
+    }
+    api_request = Request(
+        str(
+            app.config.get(
+                "BREVO_API_URL", "https://api.brevo.com/v3/smtp/email"
+            )
+        ).strip(),
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "accept": "application/json",
+            "api-key": brevo_api_key,
+            "content-type": "application/json",
+        },
+        method="POST",
+    )
 
     try:
-        with smtplib.SMTP(
-            mail_server,
-            int(app.config.get("MAIL_PORT", 587)),
-            timeout=15,
-        ) as smtp:
-            if app.config.get("MAIL_USE_TLS", True):
-                smtp.starttls()
-            username = str(app.config.get("MAIL_USERNAME", "")).strip()
-            password = str(app.config.get("MAIL_PASSWORD", ""))
-            if username:
-                smtp.login(username, password)
-            smtp.send_message(message)
-    except (OSError, smtplib.SMTPException, ValueError):
-        app.logger.exception("No se pudo enviar la notificacion SMTP del pedido %s", order_id)
+        with urlopen(api_request, timeout=15) as response:
+            if not 200 <= int(response.status) < 300:
+                raise OSError(f"Brevo devolvio HTTP {response.status}")
+    except (HTTPError, URLError, OSError, ValueError, TypeError):
+        app.logger.exception("No se pudo enviar la notificacion Brevo del pedido %s", order_id)
         return "failed"
     return "sent"
 

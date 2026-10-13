@@ -1,3 +1,4 @@
+import json
 import unittest
 import uuid
 from datetime import date
@@ -1528,12 +1529,13 @@ class AppTests(unittest.TestCase):
         self.assertIn(b">Cerrado<", manager_response.data)
 
         self.app.config.update(
-            MAIL_SERVER="smtp.test",
-            MAIL_PORT=25,
+            BREVO_API_KEY="brevo-test-key",
+            BREVO_API_URL="https://api.brevo.test/v3/smtp/email",
             MAIL_FROM="no-reply@sobrus.test",
-            MAIL_USE_TLS=False,
         )
-        with patch("demo_site.app.smtplib.SMTP") as smtp_factory:
+        with patch("demo_site.app.urlopen") as urlopen:
+            response = urlopen.return_value.__enter__.return_value
+            response.status = 201
             close_response = self.client.post(
                 "/purchaseorder/edit/109023?mode=manager",
                 data={
@@ -1546,11 +1548,13 @@ class AppTests(unittest.TestCase):
                 },
                 follow_redirects=True,
             )
-            smtp = smtp_factory.return_value.__enter__.return_value
-            smtp.send_message.assert_called_once()
-            email = smtp.send_message.call_args.args[0]
-            self.assertIn("RECAPITULACION DEL PEDIDO", email.get_content())
-            self.assertIn("BALANCE ACTUAL DEL REPORTE", email.get_content())
+            urlopen.assert_called_once()
+            api_request = urlopen.call_args.args[0]
+            payload = json.loads(api_request.data.decode("utf-8"))
+            self.assertEqual(api_request.full_url, "https://api.brevo.test/v3/smtp/email")
+            self.assertEqual(payload["sender"]["email"], "no-reply@sobrus.test")
+            self.assertIn("RECAPITULACION DEL PEDIDO", payload["textContent"])
+            self.assertIn("BALANCE ACTUAL DEL REPORTE", payload["textContent"])
         self.assertEqual(close_response.status_code, 200)
         self.assertIn(b"Pedidos", close_response.data)
         self.assertIn(b"Cerrado", close_response.data)

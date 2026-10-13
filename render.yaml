@@ -9,6 +9,8 @@ services:
         generateValue: true
       - key: DATABASE_URL
         sync: false
+      - key: BREVO_API_KEY
+        sync: false
       - key: MAIL_SERVER
         value: smtp.gmail.com
       - key: MAIL_PORT
