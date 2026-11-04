@@ -669,7 +669,7 @@ def ensure_invoice_order_totals_table() -> None:
                       AND tc.constraint_type = 'PRIMARY KEY'
                     LIMIT 1;
                     IF constraint_name IS NOT NULL THEN
-                        EXECUTE format('ALTER TABLE invoice_order_totals DROP CONSTRAINT %I', constraint_name);
+                        EXECUTE format('ALTER TABLE invoice_order_totals DROP CONSTRAINT %%I', constraint_name);
                     END IF;
                 END $$
                 """
