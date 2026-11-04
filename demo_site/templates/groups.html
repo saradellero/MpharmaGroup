@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block content %}
+{{ ui.page_header("Grupos", "Gestiona los grupos de farmacias y sus administradores") }}
+
+<section class="block">
+  <h2>Grupos existentes</h2>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Grupo</th>
+          <th>Administrador del grupo</th>
+          <th>Usuarios y farmacias</th>
+          <th>Estado</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for group in groups %}
+          <tr>
+            <td>
+              <form id="group-edit-{{ group.id }}" class="group-edit-row" method="post" action="{{ url_for('edit_group', group_id=group.id) }}">
+                <input class="input" name="name" value="{{ group.name }}" required>
+              </form>
+            </td>
+            <td>
+              {% if group.admins %}
+                {% for admin in group.admins %}
+                  <span>{{ admin.first_name }} {{ admin.last_name }}</span>
+                  <a class="row-action" href="#group-admin-{{ group.id }}-{{ admin.id }}">Editar</a>{% if not loop.last %}, {% endif %}
+                {% endfor %}
+              {% else %}
+                <span>Sin administrador asignado</span>
+                <a class="row-action" href="#group-admin-create-{{ group.id }}">Asignar</a>
+              {% endif %}
+            </td>
+            <td>{{ group.user_count }}</td>
+            <td>
+              <select class="input" name="active" form="group-edit-{{ group.id }}">
+                <option value="1" {% if group.active == "1" %}selected{% endif %}>Activo</option>
+                <option value="0" {% if group.active != "1" %}selected{% endif %}>Inactivo</option>
+              </select>
+            </td>
+            <td><button class="btn btn-white" type="submit" form="group-edit-{{ group.id }}">Guardar</button></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="empty">No hay grupos creados.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="block">
+  <h2>Administradores de grupo</h2>
+  {% set admin_state = namespace(has_admin=false) %}
+  {% for group in groups %}
+    {% if group.admins %}
+      {% for admin in group.admins %}
+        {% set admin_state.has_admin = true %}
+        <form id="group-admin-{{ group.id }}-{{ admin.id }}" class="form-grid group-admin-form" method="post" action="{{ url_for('edit_group_admin', group_id=group.id, user_id=admin.id) }}">
+          <h3 class="form-field-wide">{{ group.name }}</h3>
+          <label class="form-field"><span>Nombre</span><input class="input" name="first_name" value="{{ admin.first_name }}" required></label>
+          <label class="form-field"><span>Apellido</span><input class="input" name="last_name" value="{{ admin.last_name }}" required></label>
+          <label class="form-field"><span>Email</span><input class="input" type="email" name="email" value="{{ admin.email }}" required></label>
+          <label class="form-field"><span>Telefono</span><input class="input" name="phone" value="{{ admin.phone }}"></label>
+          <label class="form-field"><span>Nueva contrasena (opcional)</span><input class="input" type="password" name="password"></label>
+          <div class="form-actions form-field-wide"><button class="btn btn-blue" type="submit">Guardar administrador</button></div>
+        </form>
+      {% endfor %}
+    {% else %}
+      <form id="group-admin-create-{{ group.id }}" class="form-grid group-admin-form" method="post" action="{{ url_for('create_existing_group_admin', group_id=group.id) }}">
+        <h3 class="form-field-wide">{{ group.name }}</h3>
+        <p class="muted form-field-wide">Este grupo todavía no tiene administrador.</p>
+        <label class="form-field"><span>Nombre</span><input class="input" name="first_name" required></label>
+        <label class="form-field"><span>Apellido</span><input class="input" name="last_name" required></label>
+        <label class="form-field"><span>Email</span><input class="input" type="email" name="email" required></label>
+        <label class="form-field"><span>Telefono</span><input class="input" name="phone"></label>
+        <label class="form-field"><span>Contrasena temporal</span><input class="input" type="password" name="password" required></label>
+        <div class="form-actions form-field-wide"><button class="btn btn-blue" type="submit">Asignar administrador</button></div>
+      </form>
+    {% endif %}
+  {% endfor %}
+  {% if not admin_state.has_admin %}
+    <p class="empty">No hay administradores de grupo asignados.</p>
+  {% endif %}
+</section>
+
+<section class="block">
+  <h2>Crear grupo</h2>
+  <p class="muted">Cada grupo nuevo tendrá un administrador que podrá crear y gestionar sus farmacias.</p>
+  <form class="form-grid" method="post">
+    <label class="form-field"><span>Nombre del grupo</span><input class="input" name="name" value="{{ values.name }}" required></label>
+    {% if errors.name %}<p class="field-error">{{ errors.name }}</p>{% endif %}
+    <label class="form-field"><span>Nombre del administrador</span><input class="input" name="first_name" value="{{ values.first_name }}" required></label>
+    {% if errors.first_name %}<p class="field-error">{{ errors.first_name }}</p>{% endif %}
+    <label class="form-field"><span>Apellido del administrador</span><input class="input" name="last_name" value="{{ values.last_name }}" required></label>
+    {% if errors.last_name %}<p class="field-error">{{ errors.last_name }}</p>{% endif %}
+    <label class="form-field"><span>Email del administrador</span><input class="input" type="email" name="email" value="{{ values.email }}" required></label>
+    {% if errors.email %}<p class="field-error">{{ errors.email }}</p>{% endif %}
+    <label class="form-field"><span>Telefono</span><input class="input" name="phone" value="{{ values.phone }}"></label>
+    <label class="form-field"><span>Contrasena temporal</span><input class="input" type="password" name="password" required></label>
+    {% if errors.password %}<p class="field-error">{{ errors.password }}</p>{% endif %}
+    <div class="form-actions form-field-wide"><button class="btn btn-blue" type="submit">Crear grupo y administrador</button></div>
+  </form>
+</section>
+{% endblock %}

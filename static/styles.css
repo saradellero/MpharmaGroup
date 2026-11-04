@@ -337,6 +337,25 @@ textarea {
   font-weight: 700;
 }
 
+.group-context {
+  max-width: 180px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-menu::after {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  width: 170px;
+  height: 8px;
+  content: "";
+}
+
 .avatar {
   display: grid;
   width: 32px;
@@ -349,7 +368,7 @@ textarea {
 
 .profile-menu nav {
   position: absolute;
-  top: 38px;
+  top: calc(100% + 8px);
   right: 0;
   display: none;
   width: 160px;
@@ -359,7 +378,8 @@ textarea {
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.1);
 }
 
-.profile-menu:hover nav {
+.profile-menu:hover nav,
+.profile-menu:focus-within nav {
   display: block;
 }
 

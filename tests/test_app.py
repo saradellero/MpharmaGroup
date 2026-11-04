@@ -7,6 +7,7 @@ from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
+from flask import g
 from openpyxl import Workbook, load_workbook
 
 from demo_site.app import build_manager_options, build_order_manager_matrix, build_order_recap, build_order_summary, create_app
@@ -17,9 +18,12 @@ from demo_site.storage import (
     format_date_for_display,
     get_db,
     list_invoice_products,
+    list_groups,
+    list_group_admins,
     list_order_products,
     list_records,
     list_suppliers,
+    list_users_for_group,
     normalize_date_value,
     save_order_products,
     update_purchase_order,
@@ -158,6 +162,147 @@ class AppTests(unittest.TestCase):
         response = self.client.get("/auth/login")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Mpharma", response.data)
+        self.assertIn(b'name="group_id"', response.data)
+        self.assertIn(b"Mpharma Groups 2", response.data)
+
+    def test_groups_isolate_users_and_orders_but_share_catalogs(self):
+        response = self.client.post(
+            "/auth/login",
+            data={
+                "email": "sara.demo@example.com",
+                "password": "admin123",
+                "group_id": "group-2",
+                "redirect_url": "/",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Mpharma Groups 2", response.data)
+
+        with self.app.app_context():
+            g.group_id = "group-2"
+            self.assertTrue(list_records("products"))
+            self.assertEqual(list_records("purchaseorders"), [])
+
+            append_records(
+                "purchaseorders",
+                [{"number": "GROUP-2-ORDER", "subject": "Pedido del grupo 2"}],
+            )
+            self.assertEqual(
+                [row["number"] for row in list_records("purchaseorders")],
+                ["GROUP-2-ORDER"],
+            )
+
+        with self.app.app_context():
+            g.group_id = "default"
+            self.assertNotIn(
+                "GROUP-2-ORDER",
+                {row["number"] for row in list_records("purchaseorders")},
+            )
+
+    def test_pharmacy_user_cannot_login_to_another_group(self):
+        response = self.client.post(
+            "/auth/login",
+            data={
+                "email": "mina.test@example.com",
+                "password": "atlas123",
+                "group_id": "group-2",
+                "redirect_url": "/",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Tu usuario no pertenece al grupo seleccionado.", response.data)
+        with self.client.session_transaction() as session_data:
+            self.assertFalse(session_data.get("authenticated"))
+
+    def test_global_admin_can_create_group_and_assign_group_admin(self):
+        self.login()
+        response = self.client.get("/groups")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Ibn Sina", response.data)
+        self.assertIn(b"Crear grupo y administrador", response.data)
+
+        response = self.client.post(
+            "/groups/default/edit",
+            data={"name": "Ibn Sina", "active": "1"},
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Grupo actualizado.", response.data)
+
+        response = self.client.post(
+            "/groups",
+            data={
+                "name": "Groupe Al Amal",
+                "first_name": "Nadia",
+                "last_name": "Admin",
+                "email": "nadia.admin@example.com",
+                "phone": "0600000000",
+                "password": "amal123",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Groupe Al Amal", response.data)
+        with self.app.app_context():
+            created_group = next(
+                group for group in list_groups() if group["name"] == "Groupe Al Amal"
+            )
+            group_users = list_users_for_group(str(created_group["id"]))
+            self.assertEqual(len(group_users), 1)
+            self.assertEqual(group_users[0]["admin"], "Oui")
+            group_admin_id = group_users[0]["id"]
+
+        response = self.client.post(
+            f"/groups/{created_group['id']}/admin/{group_admin_id}/edit",
+            data={
+                "first_name": "Nadia Editada",
+                "last_name": "Admin",
+                "email": "nadia.editada@example.com",
+                "phone": "0611111111",
+                "password": "",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Administrador del grupo actualizado.", response.data)
+        with self.app.app_context():
+            self.assertEqual(
+                list_users_for_group(str(created_group["id"]))[0]["email"],
+                "nadia.editada@example.com",
+            )
+
+        response = self.client.post(
+            "/groups/group-2/admin/create",
+            data={
+                "first_name": "Omar",
+                "last_name": "Group Admin",
+                "email": "omar.group.admin@example.com",
+                "phone": "0622222222",
+                "password": "group2123",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Administrador del grupo asignado.", response.data)
+        with self.app.app_context():
+            self.assertEqual(len(list_group_admins("group-2")), 1)
+
+        self.client.get("/auth/logout")
+        response = self.client.post(
+            "/auth/login",
+            data={
+                "email": "nadia.editada@example.com",
+                "password": "amal123",
+                "group_id": created_group["id"],
+                "redirect_url": "/",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Groupe Al Amal", response.data)
+        self.assertEqual(self.client.get("/users?edit=1").status_code, 200)
 
     def test_french_language_switch_translates_login_without_breaking_controls(self):
         response = self.client.get(
@@ -165,6 +310,7 @@ class AppTests(unittest.TestCase):
             follow_redirects=True,
         )
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers.get("Content-Language"), "fr")
         self.assertIn(b"Mpharma Groups", response.data)
         self.assertIn(b"Se connecter", response.data)
         self.assertIn(b"Se souvenir de moi", response.data)
@@ -234,6 +380,11 @@ class AppTests(unittest.TestCase):
         self.assertIn("Options du gestionnaire", html)
         self.assertIn("Enregistrer en tant que gestionnaire", html)
         self.assertIn("Remises", html)
+        self.assertIn("Statut de la commande", html)
+        self.assertIn("Facturation de la commande", html)
+        self.assertNotIn("Statut del pedido", html)
+        self.assertNotIn("Puedes introducir el descuento", html)
+        self.assertNotIn("Al cerrarlo se bloqueara", html)
         self.assertIn("Chaque cellule affiche le montant du produit", html)
         self.assertIn("Page 1 sur", html)
         self.assertNotRegex(html, r"Page \d+ de \d+")
@@ -700,7 +851,7 @@ class AppTests(unittest.TestCase):
                         "subject": "Pedido farmacia",
                         "manager": "Sara Demo",
                         "supplier": "Proveedor Farmacia",
-                        "deadline": "2026-10-22",
+                        "deadline": "2099-10-22",
                         "updated": "",
                         "products": "0",
                         "quantity": "",
@@ -715,7 +866,7 @@ class AppTests(unittest.TestCase):
             "/purchaseorder/edit/109002",
             data={
                 "subject": "Pedido farmacia",
-                "deadline": "2026-10-22",
+                "deadline": "2099-10-22",
                 "supplier_id": "Proveedor Farmacia",
                 "selected_product_id": [product_id],
                 f"product_quantity_{product_id}": "6",
@@ -937,6 +1088,7 @@ class AppTests(unittest.TestCase):
         self.assertIn(b"Producto Gestor A", invoices_response.data)
         self.assertIn(b"Producto Gestor B", invoices_response.data)
         self.assertIn(b'data-field="discount"', invoices_response.data)
+        self.assertNotIn(b"readonly", invoices_response.data)
         self.assertIn(b'data-field="ug"', invoices_response.data)
         self.assertIn(b'data-field="pph-discounted"', invoices_response.data)
         self.assertIn(b"Cantidad total", invoices_response.data)
@@ -1034,7 +1186,7 @@ class AppTests(unittest.TestCase):
         with self.app.app_context():
             saved_invoice = list_invoice_products("109014")
         self.assertEqual(saved_invoice[0]["pph_discounted"], "10")
-        self.assertEqual(saved_invoice[0]["discount_pct"], "-23,0769")
+        self.assertEqual(saved_invoice[0]["discount_pct"], "23,0769")
         self.assertEqual(saved_invoice[1]["ug_pct"], "5")
         self.assertEqual(saved_invoice[1]["pph_discounted"], "19,95")
         self.assertEqual(saved_invoice[1]["discount_pct"], "5")
@@ -1142,7 +1294,7 @@ class AppTests(unittest.TestCase):
         french_invoice = self.client.get("/purchaseorder/invoices/109021")
         self.assertEqual(french_invoice.status_code, 200)
         self.assertIn("Sous-total PPH remisé".encode(), french_invoice.data)
-        self.assertIn("Remise totale supplémentaire".encode(), french_invoice.data)
+        self.assertIn("Remise additionnelle totale".encode(), french_invoice.data)
 
     def test_order_summary_and_recap_sort_products_alphabetically(self):
         with self.app.app_context():
@@ -1758,7 +1910,7 @@ class AppTests(unittest.TestCase):
                         "subject": "Pedido acumulado",
                         "manager": "Sara Demo",
                         "supplier": "Proveedor Acumulado",
-                        "deadline": "2026-10-26",
+                        "deadline": "2099-10-26",
                         "updated": "",
                         "products": "1",
                         "quantity": "9",
@@ -1783,7 +1935,7 @@ class AppTests(unittest.TestCase):
             "/purchaseorder/edit/109011?mode=edit",
             data={
                 "subject": "Pedido acumulado",
-                "deadline": "2026-10-26",
+                "deadline": "2099-10-26",
                 "supplier_id": "Proveedor Acumulado",
                 "selected_product_id": [str(product["id"])],
                 f"product_quantity_{product['id']}": "5",

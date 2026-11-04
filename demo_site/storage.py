@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import uuid
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from typing import Any, Iterable
 
-from flask import current_app, g
+from flask import current_app, g, session
 
-from .data import TABLES, USER_PASSWORDS
+from .data import GROUPS, TABLES, USER_PASSWORDS
 
 
 EDITABLE_TABLE_KEYS = (
@@ -20,6 +21,9 @@ EDITABLE_TABLE_KEYS = (
     "purchaseorders",
     "users",
 )
+
+DEFAULT_GROUP_ID = "default"
+GROUP_SCOPED_TABLE_KEYS = frozenset({"users", "purchaseorders"})
 
 DATE_FIELDS = frozenset({"date", "deadline", "updated", "birthdate"})
 DATE_INPUT_FORMATS = (
@@ -39,6 +43,7 @@ TABLE_NAME_MAP = {
 }
 
 EXTRA_FIELDS = {
+    "users": ("global_admin",),
     "purchaseorders": (
         "archived",
         "warehouse",
@@ -90,6 +95,14 @@ def get_database_url() -> str:
 
 def uses_postgres() -> bool:
     return bool(get_database_url())
+
+
+def current_group_id() -> str:
+    try:
+        value = session.get("group_id", DEFAULT_GROUP_ID)
+    except RuntimeError:
+        value = getattr(g, "group_id", DEFAULT_GROUP_ID)
+    return str(value or DEFAULT_GROUP_ID).strip() or DEFAULT_GROUP_ID
 
 
 def get_database_path() -> Path:
@@ -174,12 +187,88 @@ def close_db(error: BaseException | None = None) -> None:
 
 
 def init_db() -> None:
+    ensure_groups_table()
     for table_key in EDITABLE_TABLE_KEYS:
         ensure_records_table(table_key)
     ensure_order_products_table()
     ensure_invoice_products_table()
     ensure_invoice_order_totals_table()
     ensure_report_opening_balances_table()
+
+
+def ensure_groups_table() -> None:
+    db = get_db()
+    table_existed = table_exists(db, "groups")
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS groups (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL DEFAULT '',
+            active TEXT NOT NULL DEFAULT '1'
+        )
+        """
+    )
+    if not table_existed:
+        db.executemany(
+            "INSERT INTO groups (id, name, active) VALUES (?, ?, ?)",
+            [
+                (
+                    str(group.get("id", "")).strip(),
+                    str(group.get("name", "")).strip(),
+                    str(group.get("active", "1")).strip() or "1",
+                )
+                for group in GROUPS
+                if str(group.get("id", "")).strip()
+            ],
+        )
+    else:
+        for group in GROUPS:
+            group_id = str(group.get("id", "")).strip()
+            group_name = str(group.get("name", "")).strip()
+            if group_id and group_name:
+                db.execute(
+                    """
+                    UPDATE groups
+                    SET name = ?, active = ?
+                    WHERE id = ? AND name IN ('Mpharma Groups', 'Mpharma Groups 2')
+                    """,
+                    (
+                        group_name,
+                        str(group.get("active", "1")).strip() or "1",
+                        group_id,
+                    ),
+                )
+    db.commit()
+
+
+def list_groups(include_inactive: bool = False) -> list[dict[str, object]]:
+    where_clause = "" if include_inactive else "WHERE active = '1'"
+    rows = get_db().execute(
+        f"SELECT id, name, active FROM groups {where_clause} ORDER BY id"
+    )
+    return [dict(row) for row in rows.fetchall()]
+
+
+def get_group(group_id: str | None) -> dict[str, object]:
+    normalized = str(group_id or DEFAULT_GROUP_ID).strip() or DEFAULT_GROUP_ID
+    row = get_db().execute(
+        "SELECT id, name, active FROM groups WHERE id = ? AND active = '1'",
+        (normalized,),
+    ).fetchone()
+    if row:
+        return dict(row)
+    return {
+        "id": DEFAULT_GROUP_ID,
+        "name": next(
+            (
+                str(group.get("name", "")).strip()
+                for group in GROUPS
+                if str(group.get("id", "")).strip() == DEFAULT_GROUP_ID
+            ),
+            "Mpharma Groups",
+        ),
+        "active": "1",
+    }
 
 
 def validate_table_key(table_key: str) -> None:
@@ -210,8 +299,19 @@ def ensure_records_table(table_key: str) -> None:
     db = get_db()
     table_name = get_table_name(table_key)
     fields = get_record_fields(table_key)
+    scoped = table_key in GROUP_SCOPED_TABLE_KEYS
+    group_id = current_group_id()
+    group_scoped = table_key in GROUP_SCOPED_TABLE_KEYS
     table_existed = table_exists(db, table_name)
-    column_sql = ", ".join(f"{field} TEXT NOT NULL DEFAULT ''" for field in fields)
+    schema_fields = fields + (("group_id",) if group_scoped else ())
+    column_sql = ", ".join(
+        (
+            f"{field} TEXT NOT NULL DEFAULT '{DEFAULT_GROUP_ID}'"
+            if field == "group_id"
+            else f"{field} TEXT NOT NULL DEFAULT ''"
+        )
+        for field in schema_fields
+    )
     id_definition = (
         "BIGSERIAL PRIMARY KEY" if uses_postgres() else "INTEGER PRIMARY KEY AUTOINCREMENT"
     )
@@ -224,26 +324,39 @@ def ensure_records_table(table_key: str) -> None:
         """
     )
     existing_columns = table_columns(db, table_name)
-    for field in fields:
+    for field in schema_fields:
         if field not in existing_columns:
             db.execute(
-                f"ALTER TABLE {table_name} ADD COLUMN {field} TEXT NOT NULL DEFAULT ''"
+                f"ALTER TABLE {table_name} ADD COLUMN {field} TEXT NOT NULL DEFAULT '{DEFAULT_GROUP_ID if field == 'group_id' else ''}'"
             )
 
     if not table_existed:
-        placeholders = ", ".join("?" for _field in fields)
-        columns = ", ".join(fields)
+        placeholders = ", ".join("?" for _field in schema_fields)
+        columns = ", ".join(schema_fields)
         db.executemany(
             f"""
             INSERT INTO {table_name} ({columns})
             VALUES ({placeholders})
             """,
             [
-                tuple(serialize_value(row.get(field, "")) for field in fields)
+                tuple(
+                    serialize_value(
+                        DEFAULT_GROUP_ID if field == "group_id" else row.get(field, "")
+                    )
+                    for field in schema_fields
+                )
                 for row in TABLES[table_key]["rows"]
             ],
         )
     if table_key == "users":
+        for row in TABLES[table_key]["rows"]:
+            email = str(row.get("email", "")).strip()
+            global_admin = str(row.get("global_admin", "Non")).strip() or "Non"
+            if email:
+                db.execute(
+                    f"UPDATE {table_name} SET global_admin = ? WHERE lower(email) = lower(?)",
+                    (global_admin, email),
+                )
         for email, password in USER_PASSWORDS.items():
             db.execute(
                 f"""
@@ -254,6 +367,168 @@ def ensure_records_table(table_key: str) -> None:
                 (password, email),
             )
     db.commit()
+
+
+def create_group(
+    name: str,
+    admin_values: dict[str, object],
+) -> str:
+    group_name = str(name).strip()
+    if not group_name:
+        raise ValueError("El nombre del grupo es obligatorio.")
+    admin_email = str(admin_values.get("email", "")).strip().lower()
+    if not admin_email:
+        raise ValueError("El email del administrador es obligatorio.")
+    if find_user_by_email(admin_email):
+        raise ValueError("Ya existe un usuario con ese email.")
+
+    db = get_db()
+    group_id = f"group-{uuid.uuid4().hex[:12]}"
+    db.execute(
+        "INSERT INTO groups (id, name, active) VALUES (?, ?, '1')",
+        (group_id, group_name),
+    )
+    fields = get_record_fields("users")
+    values = {
+        "pharmacy": "",
+        "first_name": str(admin_values.get("first_name", "")).strip(),
+        "last_name": str(admin_values.get("last_name", "")).strip(),
+        "email": admin_email,
+        "password": str(admin_values.get("password", "")).strip(),
+        "phone": str(admin_values.get("phone", "")).strip(),
+        "admin": "Oui",
+        "status": "Actif",
+        "global_admin": "Non",
+    }
+    columns = fields + ("group_id",)
+    placeholders = ", ".join("?" for _field in columns)
+    db.execute(
+        f"INSERT INTO users ({', '.join(columns)}) VALUES ({placeholders})",
+        tuple(serialize_value(values.get(field, "")) for field in fields)
+        + (group_id,),
+    )
+    db.commit()
+    return group_id
+
+
+def update_group(group_id: str, name: str, active: bool) -> int:
+    normalized_id = str(group_id).strip()
+    normalized_name = str(name).strip()
+    if not normalized_id or not normalized_name:
+        return 0
+    db = get_db()
+    cursor = db.execute(
+        "UPDATE groups SET name = ?, active = ? WHERE id = ?",
+        (normalized_name, "1" if active else "0", normalized_id),
+    )
+    db.commit()
+    return cursor.rowcount
+
+
+def list_group_admins(group_id: str) -> list[dict[str, object]]:
+    return [
+        user
+        for user in list_users_for_group(group_id)
+        if str(user.get("admin", "")).strip().lower()
+        in {"1", "true", "yes", "oui", "si", "admin", "administrador"}
+    ]
+
+
+def update_group_admin(
+    group_id: str,
+    user_id: object,
+    values: dict[str, object],
+) -> int:
+    normalized_group_id = str(group_id).strip()
+    try:
+        normalized_user_id = int(str(user_id).strip())
+    except ValueError:
+        return 0
+    first_name = str(values.get("first_name", "")).strip()
+    last_name = str(values.get("last_name", "")).strip()
+    email = str(values.get("email", "")).strip().lower()
+    phone = str(values.get("phone", "")).strip()
+    if not normalized_group_id or not first_name or not last_name or not email:
+        return 0
+
+    db = get_db()
+    conflict = db.execute(
+        """
+        SELECT id
+        FROM users
+        WHERE lower(email) = lower(?) AND id <> ?
+        LIMIT 1
+        """,
+        (email, normalized_user_id),
+    ).fetchone()
+    if conflict:
+        raise ValueError("Ya existe un usuario con ese email.")
+
+    assignments = ["first_name = ?", "last_name = ?", "email = ?", "phone = ?"]
+    params: list[object] = [first_name, last_name, email, phone]
+    password = str(values.get("password", "")).strip()
+    if password:
+        assignments.append("password = ?")
+        params.append(password)
+    params.extend((normalized_user_id, normalized_group_id))
+    cursor = db.execute(
+        f"""
+        UPDATE users
+        SET {', '.join(assignments)}
+        WHERE id = ? AND group_id = ?
+          AND lower(admin) IN ('1', 'true', 'yes', 'oui', 'si', 'admin', 'administrador')
+        """,
+        tuple(params),
+    )
+    db.commit()
+    return cursor.rowcount
+
+
+def create_group_admin(group_id: str, values: dict[str, object]) -> int:
+    normalized_group_id = str(group_id).strip()
+    first_name = str(values.get("first_name", "")).strip()
+    last_name = str(values.get("last_name", "")).strip()
+    email = str(values.get("email", "")).strip().lower()
+    phone = str(values.get("phone", "")).strip()
+    password = str(values.get("password", "")).strip()
+    if not normalized_group_id or not first_name or not last_name or not email or not password:
+        return 0
+
+    db = get_db()
+    group = db.execute(
+        "SELECT id FROM groups WHERE id = ?",
+        (normalized_group_id,),
+    ).fetchone()
+    if not group:
+        return 0
+    conflict = db.execute(
+        "SELECT id FROM users WHERE lower(email) = lower(?) LIMIT 1",
+        (email,),
+    ).fetchone()
+    if conflict:
+        raise ValueError("Ya existe un usuario con ese email.")
+
+    fields = get_record_fields("users")
+    values_to_insert = {
+        "pharmacy": "",
+        "first_name": first_name,
+        "last_name": last_name,
+        "email": email,
+        "password": password,
+        "phone": phone,
+        "admin": "Oui",
+        "status": "Actif",
+        "global_admin": "Non",
+    }
+    columns = fields + ("group_id",)
+    placeholders = ", ".join("?" for _field in columns)
+    cursor = db.execute(
+        f"INSERT INTO users ({', '.join(columns)}) VALUES ({placeholders})",
+        tuple(serialize_value(values_to_insert.get(field, "")) for field in fields)
+        + (normalized_group_id,),
+    )
+    db.commit()
+    return cursor.rowcount
 
 
 def init_app(app) -> None:
@@ -270,19 +545,30 @@ def update_suppliers(existing_rows: Iterable[dict[str, str]], new_row: dict[str,
     save_records("suppliers", existing_rows, new_row)
 
 
-def find_user_by_email(email: str) -> dict[str, object] | None:
+def find_user_by_email(
+    email: str,
+    group_id: str | None = None,
+) -> dict[str, object] | None:
     normalized_email = email.strip().lower()
-    for user in list_records("users"):
-        if str(user.get("email", "")).strip().lower() == normalized_email:
-            return user
-    return None
+    fields = get_record_fields("users")
+    selected_columns = ", ".join(("id",) + fields + ("group_id",))
+    where_clause = "WHERE lower(email) = lower(?)"
+    params: list[object] = [normalized_email]
+    if group_id is not None:
+        where_clause += " AND group_id = ?"
+        params.append(str(group_id).strip() or DEFAULT_GROUP_ID)
+    row = get_db().execute(
+        f"SELECT {selected_columns} FROM users {where_clause} ORDER BY id LIMIT 1",
+        tuple(params),
+    ).fetchone()
+    return deserialize_row("users", dict(row)) if row else None
 
 
 def update_user_password(email: str, password: str) -> None:
     db = get_db()
     db.execute(
-        "UPDATE users SET password = ? WHERE lower(email) = lower(?)",
-        (password.strip(), email.strip()),
+        "UPDATE users SET password = ? WHERE lower(email) = lower(?) AND group_id = ?",
+        (password.strip(), email.strip(), current_group_id()),
     )
     db.commit()
 
@@ -296,6 +582,7 @@ def ensure_order_products_table() -> None:
         """
         CREATE TABLE IF NOT EXISTS order_products (
             id ID_DEFINITION_PLACEHOLDER,
+            group_id TEXT NOT NULL DEFAULT 'default',
             order_number TEXT NOT NULL,
             pharmacy TEXT NOT NULL DEFAULT '',
             product_id TEXT NOT NULL DEFAULT '',
@@ -313,6 +600,7 @@ def ensure_order_products_table() -> None:
     )
     existing_columns = table_columns(db, "order_products")
     required_columns = {
+        "group_id": "TEXT NOT NULL DEFAULT 'default'",
         "order_number": "TEXT NOT NULL DEFAULT ''",
         "pharmacy": "TEXT NOT NULL DEFAULT ''",
         "product_id": "TEXT NOT NULL DEFAULT ''",
@@ -340,6 +628,7 @@ def ensure_invoice_products_table() -> None:
         """
         CREATE TABLE IF NOT EXISTS invoice_products (
             id ID_DEFINITION_PLACEHOLDER,
+            group_id TEXT NOT NULL DEFAULT 'default',
             order_number TEXT NOT NULL,
             product_id TEXT NOT NULL DEFAULT '',
             name TEXT NOT NULL DEFAULT '',
@@ -350,10 +639,14 @@ def ensure_invoice_products_table() -> None:
         """
         .replace("ID_DEFINITION_PLACEHOLDER", id_definition)
     )
+    existing_columns = table_columns(db, "invoice_products")
+    if "group_id" not in existing_columns:
+        db.execute("ALTER TABLE invoice_products ADD COLUMN group_id TEXT NOT NULL DEFAULT 'default'")
+    db.execute("DROP INDEX IF EXISTS invoice_products_order_product")
     db.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS invoice_products_order_product
-        ON invoice_products (order_number, product_id, name)
+        ON invoice_products (group_id, order_number, product_id, name)
         """
     )
     db.commit()
@@ -361,11 +654,54 @@ def ensure_invoice_products_table() -> None:
 
 def ensure_invoice_order_totals_table() -> None:
     db = get_db()
+    if table_exists(db, "invoice_order_totals") and "group_id" not in table_columns(db, "invoice_order_totals"):
+        if uses_postgres():
+            db.execute("ALTER TABLE invoice_order_totals ADD COLUMN group_id TEXT NOT NULL DEFAULT 'default'")
+            db.execute(
+                """
+                DO $$
+                DECLARE constraint_name text;
+                BEGIN
+                    SELECT tc.constraint_name INTO constraint_name
+                    FROM information_schema.table_constraints tc
+                    WHERE tc.table_schema = current_schema()
+                      AND tc.table_name = 'invoice_order_totals'
+                      AND tc.constraint_type = 'PRIMARY KEY'
+                    LIMIT 1;
+                    IF constraint_name IS NOT NULL THEN
+                        EXECUTE format('ALTER TABLE invoice_order_totals DROP CONSTRAINT %I', constraint_name);
+                    END IF;
+                END $$
+                """
+            )
+            db.execute("ALTER TABLE invoice_order_totals ADD PRIMARY KEY (group_id, order_number)")
+        else:
+            db.execute("ALTER TABLE invoice_order_totals RENAME TO invoice_order_totals_legacy")
+            db.execute(
+                """
+                CREATE TABLE invoice_order_totals (
+                    group_id TEXT NOT NULL DEFAULT 'default',
+                    order_number TEXT NOT NULL,
+                    total_discount_pct TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (group_id, order_number)
+                )
+                """
+            )
+            db.execute(
+                """
+                INSERT INTO invoice_order_totals (group_id, order_number, total_discount_pct)
+                SELECT 'default', order_number, total_discount_pct
+                FROM invoice_order_totals_legacy
+                """
+            )
+            db.execute("DROP TABLE invoice_order_totals_legacy")
     db.execute(
         """
         CREATE TABLE IF NOT EXISTS invoice_order_totals (
-            order_number TEXT PRIMARY KEY,
-            total_discount_pct TEXT NOT NULL DEFAULT ''
+            group_id TEXT NOT NULL DEFAULT 'default',
+            order_number TEXT NOT NULL,
+            total_discount_pct TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY (group_id, order_number)
         )
         """
     )
@@ -374,11 +710,54 @@ def ensure_invoice_order_totals_table() -> None:
 
 def ensure_report_opening_balances_table() -> None:
     db = get_db()
+    if table_exists(db, "report_opening_balances") and "group_id" not in table_columns(db, "report_opening_balances"):
+        if uses_postgres():
+            db.execute("ALTER TABLE report_opening_balances ADD COLUMN group_id TEXT NOT NULL DEFAULT 'default'")
+            db.execute(
+                """
+                DO $$
+                DECLARE constraint_name text;
+                BEGIN
+                    SELECT tc.constraint_name INTO constraint_name
+                    FROM information_schema.table_constraints tc
+                    WHERE tc.table_schema = current_schema()
+                      AND tc.table_name = 'report_opening_balances'
+                      AND tc.constraint_type = 'PRIMARY KEY'
+                    LIMIT 1;
+                    IF constraint_name IS NOT NULL THEN
+                        EXECUTE format('ALTER TABLE report_opening_balances DROP CONSTRAINT %I', constraint_name);
+                    END IF;
+                END $$
+                """
+            )
+            db.execute("ALTER TABLE report_opening_balances ADD PRIMARY KEY (group_id, pharmacy)")
+        else:
+            db.execute("ALTER TABLE report_opening_balances RENAME TO report_opening_balances_legacy")
+            db.execute(
+                """
+                CREATE TABLE report_opening_balances (
+                    group_id TEXT NOT NULL DEFAULT 'default',
+                    pharmacy TEXT NOT NULL,
+                    amount TEXT NOT NULL DEFAULT '',
+                    PRIMARY KEY (group_id, pharmacy)
+                )
+                """
+            )
+            db.execute(
+                """
+                INSERT INTO report_opening_balances (group_id, pharmacy, amount)
+                SELECT 'default', pharmacy, amount
+                FROM report_opening_balances_legacy
+                """
+            )
+            db.execute("DROP TABLE report_opening_balances_legacy")
     db.execute(
         """
         CREATE TABLE IF NOT EXISTS report_opening_balances (
-            pharmacy TEXT PRIMARY KEY,
-            amount TEXT NOT NULL DEFAULT ''
+            group_id TEXT NOT NULL DEFAULT 'default',
+            pharmacy TEXT NOT NULL,
+            amount TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY (group_id, pharmacy)
         )
         """
     )
@@ -389,8 +768,14 @@ def list_records(table_key: str, archived: bool | None = None) -> list[dict[str,
     table_name = get_table_name(table_key)
     fields = get_record_fields(table_key)
     selected_columns = ", ".join(("id",) + fields)
+    where_clause = ""
+    params: tuple[object, ...] = ()
+    if table_key in GROUP_SCOPED_TABLE_KEYS:
+        where_clause = "WHERE group_id = ?"
+        params = (current_group_id(),)
     rows = get_db().execute(
-        f"SELECT {selected_columns} FROM {table_name} ORDER BY id"
+        f"SELECT {selected_columns} FROM {table_name} {where_clause} ORDER BY id",
+        params,
     )
     records = [deserialize_row(table_key, dict(row)) for row in rows.fetchall()]
     if archived is not None:
@@ -400,6 +785,20 @@ def list_records(table_key: str, archived: bool | None = None) -> list[dict[str,
             if bool(record.get("archived")) is bool(archived)
         ]
     return records
+
+
+def list_users_for_group(group_id: str) -> list[dict[str, object]]:
+    normalized_group_id = str(group_id).strip() or DEFAULT_GROUP_ID
+    fields = get_record_fields("users")
+    selected_columns = ", ".join(("id",) + fields + ("group_id",))
+    rows = get_db().execute(
+        f"SELECT {selected_columns} FROM users WHERE group_id = ? ORDER BY id",
+        (normalized_group_id,),
+    )
+    return [
+        deserialize_row("users", dict(row))
+        for row in rows.fetchall()
+    ]
 
 
 def update_purchase_order(order_number: str, values: dict[str, object]) -> int:
@@ -417,9 +816,9 @@ def update_purchase_order(order_number: str, values: dict[str, object]) -> int:
         f"""
         UPDATE purchaseorders
         SET {assignments}
-        WHERE number = ?
+        WHERE number = ? AND group_id = ?
         """,
-        tuple(allowed_values.values()) + (order_number,),
+        tuple(allowed_values.values()) + (order_number, current_group_id()),
     )
     db.commit()
     return cursor.rowcount
@@ -429,8 +828,8 @@ def list_order_products(
     order_number: str,
     pharmacy: str | None = None,
 ) -> list[dict[str, object]]:
-    where_clause = "WHERE order_number = ?"
-    params = [str(order_number)]
+    where_clause = "WHERE group_id = ? AND order_number = ?"
+    params = [current_group_id(), str(order_number)]
     if pharmacy is not None:
         where_clause += " AND pharmacy = ?"
         params.append(str(pharmacy).strip())
@@ -451,10 +850,10 @@ def list_invoice_products(order_number: str) -> list[dict[str, object]]:
         """
         SELECT order_number, product_id, name, discount_pct, ug_pct, pph_discounted
         FROM invoice_products
-        WHERE order_number = ?
+        WHERE group_id = ? AND order_number = ?
         ORDER BY id
         """,
-        (str(order_number),),
+        (current_group_id(), str(order_number)),
     )
     return [dict(row) for row in rows.fetchall()]
 
@@ -464,9 +863,9 @@ def get_invoice_order_discount(order_number: str) -> str:
         """
         SELECT total_discount_pct
         FROM invoice_order_totals
-        WHERE order_number = ?
+        WHERE group_id = ? AND order_number = ?
         """,
-        (str(order_number).strip(),),
+        (current_group_id(), str(order_number).strip()),
     ).fetchone()
     return str(row["total_discount_pct"] if row else "").strip()
 
@@ -477,24 +876,25 @@ def save_invoice_order_discount(order_number: str, value: object) -> None:
     db = get_db()
     if not normalized:
         db.execute(
-            "DELETE FROM invoice_order_totals WHERE order_number = ?",
-            (order_value,),
+            "DELETE FROM invoice_order_totals WHERE group_id = ? AND order_number = ?",
+            (current_group_id(), order_value),
         )
     else:
         db.execute(
             """
-            INSERT INTO invoice_order_totals (order_number, total_discount_pct)
-            VALUES (?, ?)
-            ON CONFLICT(order_number) DO UPDATE SET total_discount_pct = excluded.total_discount_pct
+            INSERT INTO invoice_order_totals (group_id, order_number, total_discount_pct)
+            VALUES (?, ?, ?)
+            ON CONFLICT(group_id, order_number) DO UPDATE SET total_discount_pct = excluded.total_discount_pct
             """,
-            (order_value, normalized),
+            (current_group_id(), order_value, normalized),
         )
     db.commit()
 
 
 def list_report_opening_balances() -> dict[str, str]:
     rows = get_db().execute(
-        "SELECT pharmacy, amount FROM report_opening_balances ORDER BY pharmacy"
+        "SELECT pharmacy, amount FROM report_opening_balances WHERE group_id = ? ORDER BY pharmacy",
+        (current_group_id(),),
     )
     return {
         str(row["pharmacy"]): str(row["amount"])
@@ -511,11 +911,11 @@ def save_report_opening_balances(values: dict[str, object]) -> None:
             continue
         db.execute(
             """
-            INSERT INTO report_opening_balances (pharmacy, amount)
-            VALUES (?, ?)
-            ON CONFLICT(pharmacy) DO UPDATE SET amount = excluded.amount
+            INSERT INTO report_opening_balances (group_id, pharmacy, amount)
+            VALUES (?, ?, ?)
+            ON CONFLICT(group_id, pharmacy) DO UPDATE SET amount = excluded.amount
             """,
-            (pharmacy_value, str(amount).strip()),
+            (current_group_id(), pharmacy_value, str(amount).strip()),
         )
     db.commit()
 
@@ -527,8 +927,8 @@ def save_invoice_products(
     db = get_db()
     order_value = str(order_number).strip()
     db.execute(
-        "DELETE FROM invoice_products WHERE order_number = ?",
-        (order_value,),
+        "DELETE FROM invoice_products WHERE group_id = ? AND order_number = ?",
+        (current_group_id(), order_value),
     )
     values_to_insert = []
     for product in products:
@@ -537,6 +937,7 @@ def save_invoice_products(
             continue
         values_to_insert.append(
             (
+                current_group_id(),
                 order_value,
                 str(product.get("product_id", "")).strip(),
                 name,
@@ -549,8 +950,8 @@ def save_invoice_products(
         db.executemany(
             """
             INSERT INTO invoice_products
-                (order_number, product_id, name, discount_pct, ug_pct, pph_discounted)
-            VALUES (?, ?, ?, ?, ?, ?)
+                (group_id, order_number, product_id, name, discount_pct, ug_pct, pph_discounted)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             values_to_insert,
         )
@@ -566,8 +967,8 @@ def save_order_products(
     db = get_db()
     pharmacy_name = str(pharmacy).strip()
     db.execute(
-        "DELETE FROM order_products WHERE order_number = ? AND pharmacy = ?",
-        (str(order_number), pharmacy_name),
+        "DELETE FROM order_products WHERE group_id = ? AND order_number = ? AND pharmacy = ?",
+        (current_group_id(), str(order_number), pharmacy_name),
     )
     values_to_insert = []
     for position, product in enumerate(products, start=1):
@@ -576,6 +977,7 @@ def save_order_products(
             continue
         values_to_insert.append(
             (
+                current_group_id(),
                 str(order_number),
                 pharmacy_name,
                 str(product.get("id", product.get("product_id", ""))).strip(),
@@ -593,8 +995,8 @@ def save_order_products(
         db.executemany(
             """
             INSERT INTO order_products
-                (order_number, pharmacy, product_id, supplier, name, ppv, pph, tax, barcode, quantity, position)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (group_id, order_number, pharmacy, product_id, supplier, name, ppv, pph, tax, barcode, quantity, position)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             values_to_insert,
         )
@@ -609,8 +1011,8 @@ def replace_order_products(
     """Replace every pharmacy line for an order, for manager-level edits."""
     db = get_db()
     db.execute(
-        "DELETE FROM order_products WHERE order_number = ?",
-        (str(order_number),),
+        "DELETE FROM order_products WHERE group_id = ? AND order_number = ?",
+        (current_group_id(), str(order_number)),
     )
     values_to_insert = []
     for position, product in enumerate(products, start=1):
@@ -620,6 +1022,7 @@ def replace_order_products(
             continue
         values_to_insert.append(
             (
+                current_group_id(),
                 str(order_number),
                 pharmacy,
                 str(product.get("id", product.get("product_id", ""))).strip(),
@@ -637,8 +1040,8 @@ def replace_order_products(
         db.executemany(
             """
             INSERT INTO order_products
-                (order_number, pharmacy, product_id, supplier, name, ppv, pph, tax, barcode, quantity, position)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (group_id, order_number, pharmacy, product_id, supplier, name, ppv, pph, tax, barcode, quantity, position)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             values_to_insert,
         )
@@ -655,6 +1058,8 @@ def save_records(
     table_name = get_table_name(table_key)
     visible_fields = get_visible_fields(table_key)
     fields = get_record_fields(table_key)
+    scoped = table_key in GROUP_SCOPED_TABLE_KEYS
+    group_id = current_group_id()
     for row in existing_rows:
         record_id = row.get("id", "").strip()
         if not record_id:
@@ -664,17 +1069,21 @@ def save_records(
             for field in fields
         }
         if not any(cleaned.get(field, "") for field in visible_fields):
-            db.execute(f"DELETE FROM {table_name} WHERE id = ?", (record_id,))
+            where = "id = ? AND group_id = ?" if scoped else "id = ?"
+            params = (record_id, group_id) if scoped else (record_id,)
+            db.execute(f"DELETE FROM {table_name} WHERE {where}", params)
             continue
         assignments = ", ".join(f"{field} = ?" for field in fields)
+        where = "id = ? AND group_id = ?" if scoped else "id = ?"
+        params = tuple(serialize_value(cleaned.get(field, "")) for field in fields)
+        params += (record_id, group_id) if scoped else (record_id,)
         db.execute(
             f"""
             UPDATE {table_name}
             SET {assignments}
-            WHERE id = ?
+            WHERE {where}
             """,
-            tuple(serialize_value(cleaned.get(field, "")) for field in fields)
-            + (record_id,),
+            params,
         )
 
     cleaned_new_row = {
@@ -682,14 +1091,17 @@ def save_records(
         for field in fields
     }
     if any(cleaned_new_row.get(field, "") for field in visible_fields):
-        columns = ", ".join(fields)
-        placeholders = ", ".join("?" for _field in fields)
+        insert_fields = fields + (("group_id",) if scoped else ())
+        columns = ", ".join(insert_fields)
+        placeholders = ", ".join("?" for _field in insert_fields)
+        values = tuple(serialize_value(cleaned_new_row.get(field, "")) for field in fields)
+        values += (group_id,) if scoped else ()
         db.execute(
             f"""
             INSERT INTO {table_name} ({columns})
             VALUES ({placeholders})
             """,
-            tuple(serialize_value(cleaned_new_row.get(field, "")) for field in fields),
+            values,
         )
     db.commit()
 
@@ -699,8 +1111,11 @@ def append_records(table_key: str, new_rows: Iterable[dict[str, str]]) -> int:
     table_name = get_table_name(table_key)
     visible_fields = get_visible_fields(table_key)
     fields = get_record_fields(table_key)
-    columns = ", ".join(fields)
-    placeholders = ", ".join("?" for _field in fields)
+    scoped = table_key in GROUP_SCOPED_TABLE_KEYS
+    group_id = current_group_id()
+    insert_fields = fields + (("group_id",) if scoped else ())
+    columns = ", ".join(insert_fields)
+    placeholders = ", ".join("?" for _field in insert_fields)
     values_to_insert = []
 
     for row in new_rows:
@@ -710,9 +1125,8 @@ def append_records(table_key: str, new_rows: Iterable[dict[str, str]]) -> int:
         }
         if not any(cleaned.get(field, "") for field in visible_fields):
             continue
-        values_to_insert.append(
-            tuple(serialize_value(cleaned.get(field, "")) for field in fields)
-        )
+        values = tuple(serialize_value(cleaned.get(field, "")) for field in fields)
+        values_to_insert.append(values + ((group_id,) if scoped else ()))
 
     if values_to_insert:
         db.executemany(
@@ -740,10 +1154,16 @@ def delete_records(table_key: str, record_ids: Iterable[str]) -> int:
         return 0
 
     placeholders = ", ".join("?" for _record_id in cleaned_ids)
-    cursor = db.execute(
-        f"DELETE FROM {table_name} WHERE id IN ({placeholders})",
-        tuple(cleaned_ids),
-    )
+    if table_key in GROUP_SCOPED_TABLE_KEYS:
+        cursor = db.execute(
+            f"DELETE FROM {table_name} WHERE id IN ({placeholders}) AND group_id = ?",
+            tuple(cleaned_ids) + (current_group_id(),),
+        )
+    else:
+        cursor = db.execute(
+            f"DELETE FROM {table_name} WHERE id IN ({placeholders})",
+            tuple(cleaned_ids),
+        )
     db.commit()
     return cursor.rowcount
 

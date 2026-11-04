@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Mapping
 
+from .data import GLOBAL_ADMIN_EMAILS
 from .storage import find_user_by_email
 
 
@@ -18,6 +19,7 @@ def authenticate_user(email: str, password: str) -> dict[str, object] | None:
 
 def build_session_user(user: Mapping[str, object]) -> dict[str, object]:
     is_admin = is_admin_record(user)
+    is_global_admin = is_global_admin_record(user)
     first_name = str(user.get("first_name", "")).strip()
     last_name = str(user.get("last_name", "")).strip()
     name = " ".join(part for part in (first_name, last_name) if part).strip()
@@ -30,6 +32,8 @@ def build_session_user(user: Mapping[str, object]) -> dict[str, object]:
         "last_name": last_name,
         "phone": str(user.get("phone", "")),
         "is_admin": is_admin,
+        "is_global_admin": is_global_admin,
+        "group_id": str(user.get("group_id", "default")),
     }
 
 
@@ -50,9 +54,23 @@ def is_admin_user(user: Mapping[str, object] | None) -> bool:
     }
 
 
+def is_global_admin_record(user: Mapping[str, object] | None) -> bool:
+    if not user:
+        return False
+    value = str(user.get("global_admin", user.get("is_global_admin", ""))).strip().lower()
+    email = str(user.get("email", "")).strip().lower()
+    return value in {"1", "true", "yes", "oui", "si", "admin", "administrador"} or email in GLOBAL_ADMIN_EMAILS
+
+
+def is_global_admin_user(user: Mapping[str, object] | None) -> bool:
+    return is_global_admin_record(user)
+
+
 def can_edit_table(user: Mapping[str, object] | None, table_key: str) -> bool:
     return is_admin_user(user) or table_key == "purchaseorders"
 
 
 def visible_nav_items(user: Mapping[str, object] | None, nav_items: tuple) -> tuple:
-    return nav_items
+    if is_global_admin_user(user):
+        return nav_items
+    return tuple(item for item in nav_items if item.key != "groups")

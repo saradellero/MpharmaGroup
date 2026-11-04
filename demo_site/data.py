@@ -31,6 +31,7 @@ NAV_ITEMS = (
     NavItem("events", "Eventos", "events", "calendar"),
     NavItem("reports", "Reportes", "reports", "chart"),
     NavItem("users", "Farmacias", "users", "users"),
+    NavItem("groups", "Grupos", "groups", "groups"),
     NavItem("settings", "Ajustes", "profile", "gear"),
 )
 
@@ -203,6 +204,7 @@ USERS = [
         "password": "admin123",
         "phone": "06 15 65 75 39",
         "admin": "Oui",
+        "global_admin": "Oui",
         "status": "Actif",
     },
     {
@@ -213,6 +215,7 @@ USERS = [
         "password": "atlas123",
         "phone": "06 20 20 20 20",
         "admin": "Non",
+        "global_admin": "Non",
         "status": "Actif",
     },
     {
@@ -223,11 +226,18 @@ USERS = [
         "password": "riviera123",
         "phone": "06 33 44 55 66",
         "admin": "Non",
+        "global_admin": "Non",
         "status": "Actif",
     },
 ]
 
 USER_PASSWORDS = {user["email"]: user["password"] for user in USERS}
+GLOBAL_ADMIN_EMAILS = {"sara.demo@example.com"}
+
+GROUPS = [
+    {"id": "default", "name": "Ibn Sina", "active": "1"},
+    {"id": "group-2", "name": "Mpharma Groups 2", "active": "1"},
+]
 
 CALENDAR_EVENTS = [
     {"day": 2, "title": "Relance fournisseurs", "supplier": "Atlas Distribution"},

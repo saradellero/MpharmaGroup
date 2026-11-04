@@ -35,6 +35,8 @@ from .auth import (
     can_edit_table,
     is_admin_record,
     is_admin_user,
+    is_global_admin_record,
+    is_global_admin_user,
     visible_nav_items,
 )
 from .data import (
@@ -51,9 +53,12 @@ from .validation import validate_login, validate_recovery
 from .i18n import SUPPORTED_LANGUAGES, translate_html
 from .storage import init_app as init_storage
 from .storage import (
+    DEFAULT_GROUP_ID,
     append_records,
     delete_records,
     format_date_for_display,
+    create_group,
+    get_group,
     get_extra_fields,
     get_invoice_order_discount,
     get_record_fields,
@@ -61,6 +66,8 @@ from .storage import (
     list_order_products,
     list_report_opening_balances,
     list_records,
+    list_groups,
+    list_users_for_group,
     normalize_date_value,
     replace_order_products,
     save_invoice_products,
@@ -69,6 +76,10 @@ from .storage import (
     save_report_opening_balances,
     save_records,
     update_purchase_order,
+    update_group,
+    update_group_admin,
+    create_group_admin,
+    list_group_admins,
     update_user_password,
 )
 
@@ -222,12 +233,15 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             "current_user": current_user,
             "upload_limit_label": format_bytes(int(app.config["MAX_CONTENT_LENGTH"])),
             "back_url": safe_back_url(),
+            "active_group": get_group(session.get("group_id", DEFAULT_GROUP_ID)),
         }
 
     @app.after_request
     def localize_response(response: object) -> object:
-        if getattr(response, "mimetype", "") == "text/html" and session.get("language") == "fr":
+        language = session.get("language", "es")
+        if getattr(response, "mimetype", "") == "text/html" and language == "fr":
             response.set_data(translate_html(response.get_data(as_text=True), "fr"))
+        response.headers["Content-Language"] = language
         return response
 
     @app.route("/set-language")
@@ -274,15 +288,42 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
 
         return wrapped
 
+    def global_admin_required(view: Callable) -> Callable:
+        @wraps(view)
+        @login_required
+        def wrapped(*args: object, **kwargs: object) -> object:
+            if not is_global_admin_user(session.get("user")):
+                abort(403)
+            return view(*args, **kwargs)
+
+        return wrapped
+
     @app.route("/auth/login", methods=["GET", "POST"])
     def login() -> object:
         redirect_url = request.values.get("redirect_url", "/")
         errors: dict[str, str] = {}
-        values = {"email": request.form.get("email", ""), "remember": "1"}
+        groups = list_groups()
+        group_ids = {str(group["id"]) for group in groups}
+        selected_group_id = (
+            request.form.get("group_id")
+            or session.get("group_id")
+            or DEFAULT_GROUP_ID
+        ).strip()
+        if selected_group_id not in group_ids:
+            selected_group_id = DEFAULT_GROUP_ID
+        values = {
+            "email": request.form.get("email", ""),
+            "remember": "1",
+            "group_id": selected_group_id,
+        }
 
         if request.method == "POST":
             errors = validate_login(request.form)
             values["remember"] = "1" if request.form.get("remember_me") else "0"
+            selected_group_id = request.form.get("group_id", "").strip() or DEFAULT_GROUP_ID
+            values["group_id"] = selected_group_id
+            if selected_group_id not in group_ids:
+                errors["group_id"] = "Selecciona un grupo de farmacias."
             authenticated_user = None
             if not errors:
                 authenticated_user = authenticate_user(
@@ -290,9 +331,19 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                     request.form.get("password", ""),
                 )
             if authenticated_user:
-                session["authenticated"] = True
-                session["user"] = authenticated_user
-                return redirect(redirect_url or url_for("dashboard"))
+                if (
+                    not is_global_admin_record(authenticated_user)
+                    and str(authenticated_user.get("group_id", DEFAULT_GROUP_ID))
+                    != selected_group_id
+                ):
+                    errors["group_id"] = "Tu usuario no pertenece al grupo seleccionado."
+                else:
+                    active_group = get_group(selected_group_id)
+                    session["authenticated"] = True
+                    session["group_id"] = selected_group_id
+                    session["group_name"] = active_group["name"]
+                    session["user"] = authenticated_user
+                    return redirect(redirect_url or url_for("dashboard"))
             if not errors:
                 errors["password"] = "Usuario o contrasena incorrectos."
             flash("Revisa los datos de acceso de la demo.", "error")
@@ -303,6 +354,8 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             values=values,
             errors=errors,
             redirect_url=redirect_url,
+            groups=groups,
+            selected_group_id=selected_group_id,
         )
 
     @app.route("/auth/password-recovery", methods=["GET", "POST"])
@@ -570,6 +623,113 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
     @login_required
     def users() -> object:
         return table_response("users")
+
+    @app.route("/groups", methods=["GET", "POST"])
+    @global_admin_required
+    def groups() -> object:
+        errors: dict[str, str] = {}
+        values = {
+            "name": request.form.get("name", "").strip(),
+            "first_name": request.form.get("first_name", "").strip(),
+            "last_name": request.form.get("last_name", "").strip(),
+            "email": request.form.get("email", "").strip(),
+            "phone": request.form.get("phone", "").strip(),
+        }
+        if request.method == "POST":
+            password = request.form.get("password", "").strip()
+            if not values["name"]:
+                errors["name"] = "Introduce el nombre del grupo."
+            if not values["first_name"]:
+                errors["first_name"] = "Introduce el nombre del administrador."
+            if not values["last_name"]:
+                errors["last_name"] = "Introduce el apellido del administrador."
+            if not values["email"]:
+                errors["email"] = "Introduce el email del administrador."
+            if not password:
+                errors["password"] = "Introduce una contrasena para el administrador."
+            if not errors:
+                try:
+                    create_group(
+                        values["name"],
+                        values | {"password": password},
+                    )
+                except ValueError as error:
+                    errors["email"] = str(error)
+                else:
+                    flash("Grupo creado y administrador asignado.", "success")
+                    return redirect(url_for("groups"))
+        group_rows = []
+        for group in list_groups(include_inactive=True):
+            group_id = str(group["id"])
+            users_in_group = list_users_for_group(group_id)
+            group_rows.append(
+                {
+                    **group,
+                    "user_count": len(users_in_group),
+                    "admins": list_group_admins(group_id),
+                    "admin_names": [
+                        " ".join(
+                            part for part in (
+                                str(user.get("first_name", "")).strip(),
+                                str(user.get("last_name", "")).strip(),
+                            )
+                            if part
+                        )
+                        for user in users_in_group
+                        if is_admin_record(user)
+                    ],
+                }
+            )
+        return render_template(
+            "groups.html",
+            title="Grupos",
+            active="groups",
+            groups=group_rows,
+            values=values,
+            errors=errors,
+        )
+
+    @app.route("/groups/<group_id>/edit", methods=["POST"])
+    @global_admin_required
+    def edit_group(group_id: str) -> object:
+        group_name = request.form.get("name", "").strip()
+        active = request.form.get("active") == "1"
+        if not group_name:
+            flash("Introduce el nombre del grupo.", "error")
+            return redirect(url_for("groups"))
+        if update_group(group_id, group_name, active):
+            flash("Grupo actualizado.", "success")
+        else:
+            flash("No se pudo actualizar el grupo.", "error")
+        return redirect(url_for("groups"))
+
+    @app.route("/groups/<group_id>/admin/<user_id>/edit", methods=["POST"])
+    @global_admin_required
+    def edit_group_admin(group_id: str, user_id: str) -> object:
+        try:
+            updated = update_group_admin(group_id, user_id, request.form)
+        except ValueError as error:
+            flash(str(error), "error")
+            return redirect(url_for("groups"))
+        if updated:
+            flash("Administrador del grupo actualizado.", "success")
+        else:
+            flash("No se pudo actualizar el administrador del grupo.", "error")
+        return redirect(url_for("groups"))
+
+    @app.route("/groups/<group_id>/admin/create", methods=["POST"])
+    @global_admin_required
+    def create_existing_group_admin(group_id: str) -> object:
+        try:
+            created = create_group_admin(group_id, request.form)
+        except ValueError as error:
+            flash(str(error), "error")
+            return redirect(url_for("groups"))
+        if created:
+            flash("Administrador del grupo asignado.", "success")
+        else:
+            flash("Completa todos los datos del administrador.", "error")
+        return redirect(url_for("groups"))
 
     @app.route("/events")
     @login_required
@@ -2529,32 +2689,53 @@ def format_percentage_number(value: float) -> str:
     return f"{value:.4f}".rstrip("0").rstrip(".").replace(".", ",")
 
 
+def discount_percentage_from_pph(pph_value: float, discounted_value: float) -> float:
+    return abs(1.0 - (discounted_value / pph_value)) * 100.0
+
+
 def invoice_products_from_form(
     products: list[dict[str, str]],
 ) -> list[dict[str, str]]:
     invoice_products = []
     for index, product in enumerate(products):
+        discount = request.form.get(
+            f"invoice_discount_{index}", ""
+        ).strip()
         pph_discounted = request.form.get(
             f"invoice_pph_discounted_{index}", ""
         ).strip()
+        input_mode = request.form.get(f"invoice_mode_{index}", "").strip()
         ug = request.form.get(f"invoice_ug_{index}", "").strip()
         pph_value = parse_optional_number(product.get("unit_price", ""))
+        discount_value = parse_optional_number(discount)
         discounted_value = parse_optional_number(pph_discounted)
         ug_value = parse_optional_number(ug)
+        discount_is_source = False
 
-        if (
-            discounted_value is None
-            and not pph_discounted
-            and ug_value is not None
-            and pph_value
-        ):
+        if input_mode == "discount" and discount_value is not None and pph_value:
+            discount_value = abs(discount_value)
+            discount_is_source = True
+            discounted_value = round(pph_value * (1 - (discount_value / 100)), 2)
+            pph_discounted = format_invoice_number(discounted_value)
+        elif input_mode == "ug" and ug_value is not None and pph_value:
             discounted_value = pph_value * (1 + (ug_value / 100))
             pph_discounted = format_invoice_number(discounted_value)
-
-        if discounted_value is not None and pph_value:
+        elif discounted_value is None and not pph_discounted and discount_value is not None and pph_value:
+            discount_value = abs(discount_value)
+            discount_is_source = True
+            discounted_value = round(pph_value * (1 - (discount_value / 100)), 2)
+            pph_discounted = format_invoice_number(discounted_value)
+        elif discounted_value is None and not pph_discounted and ug_value is not None and pph_value:
+            discounted_value = pph_value * (1 + (ug_value / 100))
+            pph_discounted = format_invoice_number(discounted_value)
+        if discount_is_source and discount_value is not None:
+            discount = format_percentage_number(abs(discount_value))
+        elif discounted_value is not None and pph_value:
             discount = format_percentage_number(
-                ((discounted_value / pph_value) - 1) * 100
+                discount_percentage_from_pph(pph_value, discounted_value)
             )
+        elif discount_value is not None:
+            discount = format_percentage_number(abs(discount_value))
         else:
             discount = ""
 

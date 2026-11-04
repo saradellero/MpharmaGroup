@@ -11,6 +11,14 @@
   <input id="password" class="input" type="password" name="password" placeholder="Password">
   {% if errors.password %}<p class="field-error">{{ errors.password }}</p>{% endif %}
 
+  <label class="sr-only" for="group-id">Grupo de farmacias</label>
+  <select id="group-id" class="input" name="group_id" required>
+    {% for group in groups %}
+      <option value="{{ group.id }}" {% if group.id|string == selected_group_id|string %}selected{% endif %}>{{ group.name }}</option>
+    {% endfor %}
+  </select>
+  {% if errors.group_id %}<p class="field-error">{{ errors.group_id }}</p>{% endif %}
+
   <label class="check-row">
     <input type="checkbox" name="remember_me" value="1" {% if values.remember == "1" %}checked{% endif %}>
     <span></span>
