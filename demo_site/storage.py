@@ -725,7 +725,7 @@ def ensure_report_opening_balances_table() -> None:
                       AND tc.constraint_type = 'PRIMARY KEY'
                     LIMIT 1;
                     IF constraint_name IS NOT NULL THEN
-                        EXECUTE format('ALTER TABLE report_opening_balances DROP CONSTRAINT %I', constraint_name);
+                        EXECUTE format('ALTER TABLE report_opening_balances DROP CONSTRAINT %%I', constraint_name);
                     END IF;
                 END $$
                 """
