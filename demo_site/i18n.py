@@ -204,6 +204,7 @@ TRANSLATIONS = {
     "Algunos pedidos se cerraron sin correo: falta configurar Brevo.": "Certaines commandes ont été clôturées sans e-mail : Brevo n’est pas configuré.",
     "Algunos pedidos se cerraron, pero no se pudo enviar el correo.": "Certaines commandes ont été clôturées, mais l’e-mail n’a pas pu être envoyé.",
     "No se pueden modificar ni eliminar pedidos cuya fecha limite ya ha llegado.": "Les commandes dont la date limite est dépassée ne peuvent pas être modifiées ni supprimées.",
+    "Solo el gestor asignado o un administrador puede eliminar pedidos.": "Seul le gestionnaire assigné ou un administrateur peut supprimer des commandes.",
     "Los pedidos cuya fecha limite ya ha llegado no se han modificado.": "Les commandes dont la date limite est dépassée n'ont pas été modifiées.",
     "La fecha limite de este pedido ya ha llegado. Solo el gestor puede modificarlo.": "La date limite de cette commande est dépassée. Seul le gestionnaire peut la modifier.",
     "Modificar pedido bloqueado": "Commande verrouillée",

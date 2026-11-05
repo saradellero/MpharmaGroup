@@ -420,12 +420,28 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 return redirect(request.path)
             if request.form.get("row_action") == "delete_selected":
                 selected_ids = request.form.getlist("selected_record_id")
-                allowed_ids = [
-                    record_id
-                    for record_id in selected_ids
-                    if record_id not in locked_order_ids
-                ]
-                blocked_count = len(selected_ids) - len(allowed_ids)
+                if table_key == "purchaseorders":
+                    order_rows_by_id = {
+                        str(row.get("id", "")).strip(): row
+                        for row in list_records("purchaseorders", archived=archived)
+                    }
+                    allowed_ids = [
+                        record_id
+                        for record_id in selected_ids
+                        if can_delete_purchase_order(
+                            order_rows_by_id.get(str(record_id).strip()), user
+                        )
+                    ]
+                    denied_delete_count = len(selected_ids) - len(allowed_ids)
+                    blocked_count = 0
+                else:
+                    allowed_ids = [
+                        record_id
+                        for record_id in selected_ids
+                        if record_id not in locked_order_ids
+                    ]
+                    blocked_count = len(selected_ids) - len(allowed_ids)
+                    denied_delete_count = 0
                 deleted = delete_records(table_key, allowed_ids)
                 if deleted:
                     flash(f"{deleted} filas eliminadas.", "success")
@@ -434,6 +450,11 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 if blocked_count:
                     flash(
                         "No se pueden modificar ni eliminar pedidos cuya fecha limite ya ha llegado.",
+                        "error",
+                    )
+                if denied_delete_count:
+                    flash(
+                        "Solo el gestor asignado o un administrador puede eliminar pedidos.",
                         "error",
                     )
                 return redirect(current_edit_url())
@@ -531,6 +552,10 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             if direction == "desc":
                 rows = list(reversed(rows))
         paginated_rows, pagination = paginate_rows(rows)
+        can_delete_purchaseorders = (
+            table_key == "purchaseorders"
+            and any(can_delete_purchase_order(row, user) for row in rows)
+        )
         selected_order = request.args.get("selected_order", "").strip()
         order_summary = None
         if table_key == "purchaseorders" and selected_order and not edit_requested:
@@ -572,6 +597,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             supplier_suggestions=supplier_suggestions,
             product_suggestions=product_suggestions,
             locked_order_ids=locked_order_ids,
+            can_delete_purchaseorders=can_delete_purchaseorders,
         )
 
     @app.route("/imports/template/<table_key>.xlsx")
@@ -2511,6 +2537,18 @@ def is_order_manager(order_id: str, user: dict[str, object] | None) -> bool:
         str(user.get("email", "")).strip(),
     }
     return order_manager in {identity for identity in identities if identity}
+
+
+def can_delete_purchase_order(
+    order: dict[str, object] | None,
+    user: dict[str, object] | None,
+) -> bool:
+    """Only the assigned manager or an administrator may delete an order."""
+    if not order:
+        return False
+    if is_admin_user(user):
+        return True
+    return is_order_manager(str(order.get("number", "")).strip(), user)
 
 
 def build_order_manager_matrix(order_id: str) -> dict[str, object]:

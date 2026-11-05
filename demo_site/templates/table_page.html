@@ -30,7 +30,9 @@
     <form class="records-edit-form records-edit-form-{{ table_key }}" method="post" action="{{ edit_form_url }}">
       <div class="edit-toolbar">
         <button class="btn btn-white" type="button" data-select-toggle>Seleccionar todo</button>
-        <button class="btn btn-danger" type="submit" name="row_action" value="delete_selected">Eliminar seleccionados</button>
+        {% if table_key != "purchaseorders" or can_delete_purchaseorders %}
+          <button class="btn btn-danger" type="submit" name="row_action" value="delete_selected">Eliminar seleccionados</button>
+        {% endif %}
       </div>
       <div class="table-wrap">
         <table class="data-table editable-table records-edit-table">

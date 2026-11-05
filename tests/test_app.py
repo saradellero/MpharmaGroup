@@ -2228,6 +2228,78 @@ class AppTests(unittest.TestCase):
         self.assertNotIn("Producto Seleccionado 1", product_names)
         self.assertNotIn("Producto Seleccionado 2", product_names)
 
+    def test_only_assigned_manager_or_admin_can_delete_purchaseorders(self):
+        with self.app.app_context():
+            append_records(
+                "purchaseorders",
+                [
+                    {
+                        "number": "109099",
+                        "subject": "Pedido protegido",
+                        "manager": "Pharmacie Atlas",
+                        "supplier": "Proveedor protegido",
+                        "deadline": "2099-12-31",
+                        "updated": "",
+                        "products": "0",
+                        "quantity": "",
+                        "status": "Ouverte",
+                        "archived": "0",
+                    }
+                ],
+            )
+            order = next(
+                row for row in list_records("purchaseorders") if row["number"] == "109099"
+            )
+            order_record_id = str(order["id"])
+
+        self.client.post(
+            "/auth/login",
+            data={
+                "email": "omar.example@example.com",
+                "password": "riviera123",
+                "redirect_url": "/",
+            },
+        )
+        response = self.client.get("/purchaseorders?edit=1")
+        self.assertNotIn(b"Eliminar seleccionados", response.data)
+        response = self.client.post(
+            "/purchaseorders?edit=1",
+            data={
+                "row_action": "delete_selected",
+                "selected_record_id": order_record_id,
+            },
+            follow_redirects=True,
+        )
+        self.assertIn(b"Solo el gestor asignado", response.data)
+        with self.app.app_context():
+            self.assertTrue(
+                any(row["number"] == "109099" for row in list_records("purchaseorders"))
+            )
+
+        self.client.post(
+            "/auth/login",
+            data={
+                "email": "mina.test@example.com",
+                "password": "atlas123",
+                "redirect_url": "/",
+            },
+        )
+        response = self.client.get("/purchaseorders?edit=1")
+        self.assertIn(b"Eliminar seleccionados", response.data)
+        response = self.client.post(
+            "/purchaseorders?edit=1",
+            data={
+                "row_action": "delete_selected",
+                "selected_record_id": order_record_id,
+            },
+            follow_redirects=True,
+        )
+        self.assertIn(b"1 filas eliminadas", response.data)
+        with self.app.app_context():
+            self.assertFalse(
+                any(row["number"] == "109099" for row in list_records("purchaseorders"))
+            )
+
     def test_delete_selected_requires_a_selection(self):
         self.login()
         response = self.client.post(
