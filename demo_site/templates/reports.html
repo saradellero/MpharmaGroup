@@ -77,7 +77,7 @@
           <th>Laboratorio</th>
           <th>PPH remisé</th>
           {% for pharmacy in report_detail.pharmacies %}
-            <th>{{ pharmacy }}</th>
+            <th class="pharmacy-header-cell pharmacy-column-{{ loop.index0 % 2 }}">{{ ui.pharmacy_header(pharmacy) }}</th>
           {% endfor %}
           <th>Total</th>
           <th>G. LABO</th>
@@ -89,7 +89,7 @@
           <td class="{% if report_detail.opening_row.pph_remised.negative %}report-negative{% endif %}">{{ report_detail.opening_row.pph_remised.display }}</td>
           {% for pharmacy in report_detail.pharmacies %}
             {% set value = report_detail.opening_row.pharmacy_values[pharmacy] %}
-            <td class="{% if value.negative %}report-negative{% endif %}">{{ value.display }}</td>
+            <td class="pharmacy-column-{{ loop.index0 % 2 }} {% if value.negative %}report-negative{% endif %}">{{ value.display }}</td>
           {% endfor %}
           <td class="{% if report_detail.opening_row.total.negative %}report-negative{% endif %}">{{ report_detail.opening_row.total.display }}</td>
           <td>{{ report_detail.opening_row.g_labo.display }}</td>
@@ -102,7 +102,7 @@
             <td class="{% if row.pph_remised.negative %}report-negative{% endif %}">{{ row.pph_remised.display }}</td>
             {% for pharmacy in report_detail.pharmacies %}
               {% set value = row.pharmacy_values.get(pharmacy, {}) %}
-              <td class="{% if value.negative %}report-negative{% endif %}">{{ value.display }}</td>
+              <td class="pharmacy-column-{{ loop.index0 % 2 }} {% if value.negative %}report-negative{% endif %}">{{ value.display }}</td>
             {% endfor %}
             <td class="{% if row.total.negative %}report-negative{% endif %}">{{ row.total.display }}</td>
             <td class="{% if row.g_labo.negative %}report-negative{% endif %}">{{ row.g_labo.display }}</td>
@@ -115,7 +115,7 @@
           <td>{{ report_detail.totals.pph_remised.display }}</td>
           {% for pharmacy in report_detail.pharmacies %}
             {% set value = report_detail.totals.pharmacy_values[pharmacy] %}
-            <td class="{% if value.negative %}report-negative{% endif %}">{{ value.display }}</td>
+            <td class="pharmacy-column-{{ loop.index0 % 2 }} {% if value.negative %}report-negative{% endif %}">{{ value.display }}</td>
           {% endfor %}
           <td>{{ report_detail.totals.total.display }}</td>
           <td>{{ report_detail.totals.g_labo.display }}</td>

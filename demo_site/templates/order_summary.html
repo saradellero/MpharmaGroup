@@ -26,7 +26,7 @@
             <tr>
               <th>Producto</th>
               {% for pharmacy in order_summary.pharmacies %}
-                <th>{{ pharmacy }}</th>
+                <th class="pharmacy-header-cell pharmacy-column-{{ loop.index0 % 2 }}">{{ ui.pharmacy_header(pharmacy) }}</th>
               {% endfor %}
               <th>Total</th>
             </tr>
@@ -36,7 +36,7 @@
               <tr>
                 <td>{{ product.name }}</td>
                 {% for pharmacy in order_summary.pharmacies %}
-                  <td class="numeric-cell">{{ product.quantities.get(pharmacy, "") }}</td>
+                  <td class="numeric-cell pharmacy-column-{{ loop.index0 % 2 }}">{{ product.quantities.get(pharmacy, "") }}</td>
                 {% endfor %}
                 <td class="numeric-cell row-total">{{ product.total }}</td>
               </tr>
@@ -44,7 +44,7 @@
             <tr class="summary-total-row">
               <th>Total</th>
               {% for pharmacy in order_summary.pharmacies %}
-                <th class="numeric-cell">{{ order_summary.totals.get(pharmacy, "") }}</th>
+                <th class="numeric-cell pharmacy-column-{{ loop.index0 % 2 }}">{{ order_summary.totals.get(pharmacy, "") }}</th>
               {% endfor %}
               <th class="numeric-cell">{{ order_summary.grand_total }}</th>
             </tr>

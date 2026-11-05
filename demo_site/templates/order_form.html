@@ -21,7 +21,11 @@
     {% else %}
       {{ ui.input_field("warehouse", "Almacen", order.warehouse, readonly=true) }}
     {% endif %}
-    {{ ui.input_field("subject", "Objeto", order.subject, readonly=not details_editable) }}
+    <label class="form-field object-search-field">
+      <span>Objeto</span>
+      <input class="input" id="order-subject" name="subject" value="{{ order.subject }}" autocomplete="off" {% if not details_editable %}readonly{% endif %}>
+      <div class="autocomplete-list" id="subject-suggestions" hidden></div>
+    </label>
     {{ ui.date_field("deadline", "Fecha limite", order.deadline, readonly=not details_editable) }}
     <label class="form-field">
       <span>Proveedor</span>
@@ -113,6 +117,8 @@
     var catalog = {{ product_catalog|tojson }};
     var selectedIds = new Set({{ selected_product_ids|tojson }});
     var selectedQuantities = {{ selected_product_quantities|tojson }};
+    var productSelectionTemplates = {{ product_selection_templates|default([])|tojson }};
+    var subjectInput = document.getElementById("order-subject");
     var supplierInput = document.getElementById("order-supplier");
     var productSearchInput = document.getElementById("product-search");
     var productSuggestions = document.getElementById("product-suggestions");
@@ -121,7 +127,8 @@
     var liveTotalPpv = document.querySelector("[data-live-total-ppv]");
     var liveTotalTtc = document.querySelector("[data-live-total-ttc]");
 
-    if (!supplierInput || !productSearchInput || !productSuggestions || !tableBody || !selectedHidden || !liveTotalPpv || !liveTotalTtc) {
+    var subjectSuggestions = document.getElementById("subject-suggestions");
+    if (!subjectInput || !supplierInput || !productSearchInput || !productSuggestions || !tableBody || !selectedHidden || !liveTotalPpv || !liveTotalTtc || !subjectSuggestions) {
       return;
     }
 
@@ -131,6 +138,22 @@
 
     function normalize(value) {
       return String(value || "").toLowerCase();
+    }
+
+    function currentTemplate() {
+      var subject = normalize(subjectInput.value.trim());
+      var supplier = normalize(currentSupplier());
+      if (!subject || !supplier) {
+        return null;
+      }
+      return productSelectionTemplates.find(function (template) {
+        return normalize(template.subject) === subject && normalize(template.supplier) === supplier;
+      }) || null;
+    }
+
+    function allowedProductIds() {
+      var template = currentTemplate();
+      return template ? new Set((template.product_ids || []).map(String)) : null;
     }
 
     function escapeHtml(value) {
@@ -149,7 +172,10 @@
       }
       return catalog
         .filter(function (product) {
-          return product.supplier === supplier && (!query || normalize(product.name).indexOf(query) !== -1);
+          var allowedIds = allowedProductIds();
+          return product.supplier === supplier &&
+            (!allowedIds || allowedIds.has(String(product.id))) &&
+            (!query || normalize(product.name).indexOf(query) !== -1);
         })
         .sort(function (a, b) {
           return normalize(a.name).localeCompare(normalize(b.name));
@@ -227,6 +253,59 @@
     function hideProductSuggestions() {
       productSuggestions.hidden = true;
       productSuggestions.innerHTML = "";
+    }
+
+    function hideSubjectSuggestions() {
+      subjectSuggestions.hidden = true;
+      subjectSuggestions.innerHTML = "";
+    }
+
+    function renderSubjectSuggestions() {
+      var query = normalize(subjectInput.value.trim());
+      subjectSuggestions.innerHTML = "";
+      if (!query || subjectInput.readOnly) {
+        hideSubjectSuggestions();
+        return;
+      }
+      var seen = new Set();
+      var matches = productSelectionTemplates
+        .filter(function (template) {
+          var subject = String(template.subject || "");
+          var key = normalize(subject);
+          if (!key || seen.has(key) || key.indexOf(query) === -1) {
+            return false;
+          }
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 12);
+      subjectSuggestions.hidden = false;
+      if (!matches.length) {
+        subjectSuggestions.innerHTML = '<div class="autocomplete-empty">Sin objetos guardados.</div>';
+        return;
+      }
+      matches.forEach(function (template) {
+        var option = document.createElement("button");
+        option.type = "button";
+        option.className = "autocomplete-option";
+        option.innerHTML = "<strong>" + escapeHtml(template.subject) + "</strong>" +
+          "<span>Proveedor: " + escapeHtml(template.supplier) + "</span>";
+        option.addEventListener("click", function () {
+          subjectInput.value = template.subject;
+          supplierInput.value = template.supplier;
+          selectedIds = new Set((template.product_ids || []).map(String));
+          selectedQuantities = {};
+          selectedIds.forEach(function (productId) {
+            selectedQuantities[productId] = "0";
+          });
+          syncSelectedInputs();
+          hideSubjectSuggestions();
+          productSearchInput.value = "";
+          hideProductSuggestions();
+          renderProducts();
+        });
+        subjectSuggestions.appendChild(option);
+      });
     }
 
     function renderProductSuggestions() {
@@ -348,6 +427,13 @@
     supplierInput.addEventListener("change", function () {
       selectedIds = new Set();
       selectedQuantities = {};
+      var template = currentTemplate();
+      if (template) {
+        selectedIds = new Set((template.product_ids || []).map(String));
+        selectedIds.forEach(function (productId) {
+          selectedQuantities[productId] = "0";
+        });
+      }
       syncSelectedInputs();
       productSearchInput.value = "";
       hideProductSuggestions();
@@ -361,6 +447,11 @@
       hideProductSuggestions();
       renderProducts();
     });
+    subjectInput.addEventListener("input", function () {
+      renderSubjectSuggestions();
+      renderProducts();
+    });
+    subjectInput.addEventListener("focus", renderSubjectSuggestions);
     productSearchInput.addEventListener("input", function () {
       renderProducts();
       renderProductSuggestions();
@@ -370,8 +461,21 @@
       if (!event.target.closest(".product-search-field")) {
         hideProductSuggestions();
       }
+      if (!event.target.closest(".object-search-field")) {
+        hideSubjectSuggestions();
+      }
     });
     syncSelectedInputs();
+    var initialTemplate = currentTemplate();
+    if (initialTemplate) {
+      initialTemplate.product_ids.forEach(function (productId) {
+        selectedIds.add(String(productId));
+        if (!selectedQuantities[String(productId)]) {
+          selectedQuantities[String(productId)] = "0";
+        }
+      });
+      syncSelectedInputs();
+    }
     renderProducts();
   });
 </script>

@@ -64,6 +64,7 @@ from .storage import (
     get_record_fields,
     list_invoice_products,
     list_order_products,
+    list_order_product_template,
     list_report_opening_balances,
     list_records,
     list_groups,
@@ -73,6 +74,7 @@ from .storage import (
     save_invoice_products,
     save_invoice_order_discount,
     save_order_products,
+    save_order_product_template,
     save_report_opening_balances,
     save_records,
     update_purchase_order,
@@ -845,7 +847,12 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
         manager_options = build_manager_options(default_manager)
         if request.method == "POST":
             order_number = next_order_number()
-            selected_products = selected_products_from_form(catalog)
+            order_subject = request.form.get("subject", "").strip()
+            order_supplier = request.form.get("supplier_id", "").strip()
+            selected_products = selected_products_from_form(
+                catalog,
+                list_order_product_template(order_subject, order_supplier),
+            )
             selected_manager = request.form.get("owner_id", "").strip()
             append_records(
                 "purchaseorders",
@@ -900,6 +907,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             order_id="Nuevo",
             supplier_options=build_supplier_options(catalog, order["supplier"]),
             product_catalog=catalog,
+            product_selection_templates=build_product_selection_templates(),
             selected_product_ids=selected_order_product_ids(order, catalog),
             selected_product_quantities=selected_order_product_quantities(order, catalog),
             manager_options=manager_options,
@@ -911,6 +919,18 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
     @login_required
     def purchaseorder_edit(order_id: str) -> object:
         catalog = build_order_product_catalog()
+        current_order_record = next(
+            (
+                row
+                for row in list_records("purchaseorders")
+                if str(row.get("number", "")).strip() == str(order_id).strip()
+            ),
+            {},
+        )
+        allowed_template_product_ids = list_order_product_template(
+            str(current_order_record.get("subject", "")).strip(),
+            str(current_order_record.get("supplier", "")).strip(),
+        )
         user = session.get("user")
         pharmacy_scope = order_product_scope_for_user(user)
         pharmacy_view = bool(pharmacy_scope)
@@ -946,7 +966,10 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 )
                 if selected_manager_pharmacy not in available_pharmacies:
                     abort(404)
-                selected_products = selected_products_from_form(catalog)
+                selected_products = selected_products_from_form(
+                    catalog,
+                    allowed_template_product_ids,
+                )
                 save_order_products(
                     order_id,
                     selected_products,
@@ -992,33 +1015,47 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                                 str(order.get("owner_id", ""))
                             ),
                             manager_matrix=matrix,
+                            product_catalog=catalog,
                             new_product_values=new_product_values,
                         )
                     supplier = request.form.get("supplier_id", "").strip()
-                    append_records(
-                        "products",
-                        [
-                            {
-                                "supplier": supplier,
-                                "name": new_product_values["name"],
-                                "ppv": new_product_values["ppv"],
-                                "pph": new_product_values["pph"],
-                                "tax": new_product_values["tax"],
-                                "barcode": new_product_values["barcode"],
-                            }
-                        ],
-                    )
-                    new_product = max(
+                    selected_product_id = new_product_values.get("product_id", "")
+                    selected_product = next(
                         (
                             row
                             for row in list_records("products")
-                            if str(row.get("supplier", "")).strip() == supplier
-                            and str(row.get("name", "")).strip()
-                            == new_product_values["name"]
+                            if str(row.get("id", "")).strip() == selected_product_id
                         ),
-                        key=lambda row: int(row.get("id", 0)),
-                        default=None,
+                        None,
                     )
+                    product_values = {
+                        "supplier": supplier,
+                        "name": new_product_values["name"],
+                        "ppv": new_product_values["ppv"],
+                        "pph": new_product_values["pph"],
+                        "tax": new_product_values["tax"],
+                        "barcode": new_product_values["barcode"],
+                    }
+                    if selected_product:
+                        new_product = {
+                            **selected_product,
+                            **product_values,
+                            "id": str(selected_product.get("id", "")),
+                        }
+                        save_records("products", [new_product], {})
+                    else:
+                        append_records("products", [product_values])
+                        new_product = max(
+                            (
+                                row
+                                for row in list_records("products")
+                                if str(row.get("supplier", "")).strip() == supplier
+                                and str(row.get("name", "")).strip()
+                                == new_product_values["name"]
+                            ),
+                            key=lambda row: int(row.get("id", 0)),
+                            default=None,
+                        )
                 update_manager_catalog_prices_from_form(matrix)
                 manager_products = manager_products_from_form(matrix)
                 if new_product:
@@ -1052,6 +1089,23 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                     if manager_values["status"] == ORDER_STATUS_CLOSED
                     else "0"
                 )
+                selected_template_ids = request.form.getlist(
+                    "manager_selected_product_id"
+                )
+                if new_product and any(
+                    quantity_is_at_least_one(
+                        request.form.get(
+                            f"manager_new_quantity_{pharmacy_index}", ""
+                        ).strip()
+                    )
+                    for pharmacy_index, _pharmacy in enumerate(matrix.get("pharmacies", []))
+                ):
+                    selected_template_ids.append(str(new_product.get("id", "")))
+                save_order_product_template(
+                    manager_values.get("subject", ""),
+                    manager_values.get("supplier", ""),
+                    selected_template_ids,
+                )
                 update_purchase_order(order_id, manager_values)
                 replace_order_products(order_id, manager_products)
                 sync_purchase_order_product_totals(order_id)
@@ -1072,7 +1126,10 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 flash("Pedido actualizado como gestor.", "success")
                 return redirect(url_for("purchaseorder_edit", order_id=order_id))
 
-            selected_products = selected_products_from_form(catalog)
+            selected_products = selected_products_from_form(
+                catalog,
+                allowed_template_product_ids,
+            )
             values = {"products": str(len(selected_products))}
             if is_admin_user(user) or order_manager:
                 values.update(manager_order_values_from_form())
@@ -1126,6 +1183,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 order_id=order_id,
                 supplier_options=build_supplier_options(catalog, order["supplier"]),
                 product_catalog=catalog,
+                product_selection_templates=build_product_selection_templates(),
                 selected_product_ids=selected_order_product_ids(order, catalog),
                 selected_product_quantities=selected_order_product_quantities(order, catalog),
                 pharmacy_mode=True,
@@ -1147,6 +1205,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 order_id=order_id,
                 manager_options=build_manager_options(str(order.get("owner_id", ""))),
                 manager_matrix=build_order_manager_matrix(order_id),
+                product_catalog=catalog,
                 new_product_values={},
             )
 
@@ -1159,6 +1218,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             order_id=order_id,
             supplier_options=build_supplier_options(catalog, order["supplier"]),
             product_catalog=catalog,
+            product_selection_templates=build_product_selection_templates(),
             selected_product_ids=selected_order_product_ids(order, catalog),
             selected_product_quantities=selected_order_product_quantities(order, catalog),
             pharmacy_mode=pharmacy_view,
@@ -1203,6 +1263,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 if requested_scope == "pharmacy"
                 else "Pedido"
             )
+        printable_products = apply_final_invoice_prices(order_id, printable_products)
         return render_template(
             "order_print.html",
             title=f"Imprimir pedido {order_id}",
@@ -1210,8 +1271,12 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             order=order,
             order_id=order_id,
             products=printable_products,
-            pharmacy_totals=build_order_totals(order_id, pharmacy_scope),
-            accumulated_totals=build_order_totals(order_id),
+            pharmacy_totals=build_order_totals(
+                order_id, pharmacy_scope, use_final_invoice_prices=True
+            ),
+            accumulated_totals=build_order_totals(
+                order_id, use_final_invoice_prices=True
+            ),
             is_total_print=is_total_print,
             print_label=print_label,
         )
@@ -1235,6 +1300,8 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 )
                 products = build_invoice_rows(order_id, products)
                 subtotal = invoice_subtotal(products)
+                initial_total = invoice_initial_total(products)
+                final_total = apply_order_total_discount(subtotal, total_discount or 0.0)
                 return render_template(
                     "order_invoices.html",
                     title=f"Facturas del pedido {order_id}",
@@ -1246,10 +1313,12 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                         sum(parse_quantity(product.get("quantity", "")) for product in products)
                     ),
                     total_discount=raw_total_discount,
+                    initial_amount=format_price(initial_total),
                     subtotal_amount=format_price(subtotal),
-                    final_amount=format_price(
-                        apply_order_total_discount(subtotal, total_discount or 0.0)
-                    ),
+                    product_discount_amount=format_price(initial_total - subtotal),
+                    additional_discount_amount=format_price(subtotal - final_total),
+                    final_amount=format_price(final_total),
+                    total_gain=format_price(initial_total - final_total),
                 )
             save_invoice_products(order_id, invoice_products_from_form(products))
             save_invoice_order_discount(
@@ -1262,6 +1331,8 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
         subtotal = invoice_subtotal(products)
         saved_total_discount = get_invoice_order_discount(order_id)
         total_discount = parse_optional_number(saved_total_discount) or 0.0
+        initial_total = invoice_initial_total(products)
+        final_total = apply_order_total_discount(subtotal, total_discount)
         return render_template(
             "order_invoices.html",
             title=f"Facturas del pedido {order_id}",
@@ -1273,10 +1344,12 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 sum(parse_quantity(product.get("quantity", "")) for product in products)
             ),
             total_discount=format_price(total_discount),
+            initial_amount=format_price(initial_total),
             subtotal_amount=format_price(subtotal),
-            final_amount=format_price(
-                apply_order_total_discount(subtotal, total_discount)
-            ),
+            product_discount_amount=format_price(initial_total - subtotal),
+            additional_discount_amount=format_price(subtotal - final_total),
+            final_amount=format_price(final_total),
+            total_gain=format_price(initial_total - final_total),
         )
 
     @app.route("/purchaseorder/recap/<order_id>")
@@ -1528,6 +1601,7 @@ def build_order_recap(order_id: str) -> dict[str, object]:
             product_index[key] = {
                 "name": product_name,
                 "amounts": {pharmacy: 0.0 for pharmacy in pharmacies},
+                "initial_amounts": {pharmacy: 0.0 for pharmacy in pharmacies},
                 "quantity": 0.0,
                 "pph": current_pph if current_pph is not None else (discounted_pph or 0.0),
                 "total": 0.0,
@@ -1545,12 +1619,19 @@ def build_order_recap(order_id: str) -> dict[str, object]:
         amounts = row.get("amounts", {})
         if isinstance(amounts, dict):
             amounts[pharmacy] = float(amounts.get(pharmacy, 0.0)) + amount
+        initial_amounts = row.get("initial_amounts", {})
+        if isinstance(initial_amounts, dict):
+            initial_amounts[pharmacy] = float(initial_amounts.get(pharmacy, 0.0)) + (
+                quantity * float(row.get("pph", 0.0))
+            )
         row["quantity"] = float(row.get("quantity", 0.0)) + quantity
         row["total"] = float(row.get("total", 0.0)) + amount
 
     totals = {pharmacy: 0.0 for pharmacy in pharmacies}
+    initial_totals = {pharmacy: 0.0 for pharmacy in pharmacies}
     formatted_rows = []
     grand_total = 0.0
+    grand_initial_total = 0.0
     grand_quantity = 0.0
     total_discount = parse_optional_number(get_invoice_order_discount(order_id)) or 0.0
     discount_factor = 1.0 - max(0.0, min(100.0, total_discount)) / 100.0
@@ -1565,16 +1646,30 @@ def build_order_recap(order_id: str) -> dict[str, object]:
             value *= discount_factor
             totals[pharmacy] += value
             amounts[pharmacy] = format_invoice_number(value)
+            initial_amounts = row.get("initial_amounts", {})
+            initial_value = (
+                float(initial_amounts.get(pharmacy, 0.0))
+                if isinstance(initial_amounts, dict)
+                else 0.0
+            )
+            initial_totals[pharmacy] += initial_value
         row_total = float(row.get("total", 0.0)) * discount_factor
         row_quantity = float(row.get("quantity", 0.0))
         grand_total += row_total
+        grand_initial_total += sum(
+            float(row.get("initial_amounts", {}).get(pharmacy, 0.0))
+            for pharmacy in pharmacies
+            if isinstance(row.get("initial_amounts", {}), dict)
+        )
         grand_quantity += row_quantity
         formatted_rows.append(
             {
                 "name": row.get("name", ""),
                 "amounts": amounts,
                 "quantity": format_quantity(row_quantity),
-                "pph": format_price(row.get("pph", 0.0)),
+                "pph": format_price(
+                    float(row.get("pph_discounted", 0.0)) * discount_factor
+                ),
                 "total": format_invoice_number(row_total),
             }
         )
@@ -1587,8 +1682,18 @@ def build_order_recap(order_id: str) -> dict[str, object]:
             pharmacy: format_invoice_number(value)
             for pharmacy, value in totals.items()
         },
+        "initial_totals": {
+            pharmacy: format_invoice_number(value)
+            for pharmacy, value in initial_totals.items()
+        },
+        "gains": {
+            pharmacy: format_invoice_number(initial_totals[pharmacy] - totals[pharmacy])
+            for pharmacy in pharmacies
+        },
         "grand_quantity": format_quantity(grand_quantity),
+        "grand_initial_total": format_invoice_number(grand_initial_total),
         "grand_total": format_invoice_number(grand_total),
+        "grand_gain": format_invoice_number(grand_initial_total - grand_total),
     }
 
 
@@ -1642,11 +1747,30 @@ def build_order_recap_workbook(
     totals = recap.get("totals", {})
     sheet.append(
         [
-            "TOTAL",
+            "TOTAL PPH INICIAL",
+            _excel_value(recap.get("grand_quantity", "")),
+            "",
+            *[_excel_value((recap.get("initial_totals", {}) or {}).get(pharmacy, "")) for pharmacy in pharmacies],
+            _excel_value(recap.get("grand_initial_total", "")),
+        ]
+    )
+    sheet.append(
+        [
+            "TOTAL PPH DESCONTADO",
             _excel_value(recap.get("grand_quantity", "")),
             "",
             *[_excel_value(totals.get(pharmacy, "")) for pharmacy in pharmacies],
             _excel_value(recap.get("grand_total", "")),
+        ]
+    )
+    gains = recap.get("gains", {}) or {}
+    sheet.append(
+        [
+            "GANANCIA ACUMULADA",
+            "",
+            "",
+            *[_excel_value(gains.get(pharmacy, "")) for pharmacy in pharmacies],
+            _excel_value(recap.get("grand_gain", "")),
         ]
     )
     sheet.insert_rows(1, 3)
@@ -2392,11 +2516,24 @@ def is_order_manager(order_id: str, user: dict[str, object] | None) -> bool:
 def build_order_manager_matrix(order_id: str) -> dict[str, object]:
     saved_products = list_order_products(str(order_id))
     order_supplier = ""
+    order_subject = ""
     for order in list_records("purchaseorders"):
         if str(order.get("number", "")).strip() == str(order_id).strip():
             order_supplier = str(order.get("supplier", "")).strip()
+            order_subject = str(order.get("subject", "")).strip()
             break
     pharmacies = build_pharmacy_columns(saved_products)
+    template_product_ids = list_order_product_template(order_subject, order_supplier)
+    saved_product_ids = {
+        str(product.get("product_id", product.get("id", ""))).strip()
+        for product in saved_products
+        if str(product.get("product_id", product.get("id", ""))).strip()
+    }
+    selected_product_ids = (
+        set(template_product_ids)
+        if template_product_ids is not None
+        else saved_product_ids
+    )
     product_rows: list[dict[str, object]] = []
     product_index: dict[str, dict[str, object]] = {}
 
@@ -2419,6 +2556,8 @@ def build_order_manager_matrix(order_id: str) -> dict[str, object]:
                 "pph": format_price(product.get("pph", product.get("unit_price", ""))),
                 "tax": str(product.get("tax", "")).strip(),
                 "barcode": str(product.get("barcode", "")).strip(),
+                "selected": str(product.get("id", product.get("product_id", ""))).strip()
+                in selected_product_ids,
                 "quantities": {pharmacy_name: "0" for pharmacy_name in pharmacies},
             }
             product_rows.append(product_index[key])
@@ -2443,7 +2582,23 @@ def build_order_manager_matrix(order_id: str) -> dict[str, object]:
             quantities[pharmacy] = format_quantity(quantity)
 
     product_rows.sort(key=lambda row: str(row.get("name", "")).casefold())
-    return {"pharmacies": pharmacies, "rows": product_rows}
+    for row in product_rows:
+        quantities = row.get("quantities", {})
+        row["total_quantity"] = format_quantity(
+            sum(parse_quantity(quantity) for quantity in quantities.values())
+            if isinstance(quantities, dict)
+            else 0.0
+        )
+    total_quantity = sum(
+        parse_quantity(quantity)
+        for row in product_rows
+        for quantity in (row.get("quantities", {}) or {}).values()
+    )
+    return {
+        "pharmacies": pharmacies,
+        "rows": product_rows,
+        "total_quantity": format_quantity(total_quantity),
+    }
 
 
 def manager_products_from_form(matrix: dict[str, object]) -> list[dict[str, str]]:
@@ -2525,6 +2680,7 @@ def manager_order_values_from_form() -> dict[str, str]:
 
 def manager_new_product_values_from_form() -> dict[str, str]:
     return {
+        "product_id": request.form.get("new_product_id", "").strip(),
         "name": request.form.get("new_product_name", "").strip(),
         "ppv": request.form.get("new_product_ppv", "").strip(),
         "pph": request.form.get("new_product_pph", "").strip(),
@@ -2567,10 +2723,25 @@ def sync_existing_purchase_order_totals() -> None:
 def build_order_totals(
     order_id: str,
     pharmacy: str | None = None,
+    use_final_invoice_prices: bool = False,
 ) -> dict[str, str]:
     total_quantity = 0.0
     total_ppv = 0.0
     total_ttc = 0.0
+    invoice_values = (
+        {
+            invoice_product_key(row): row
+            for row in list_invoice_products(order_id)
+        }
+        if use_final_invoice_prices
+        else {}
+    )
+    total_discount = (
+        parse_optional_number(get_invoice_order_discount(order_id)) or 0.0
+        if use_final_invoice_prices
+        else 0.0
+    )
+    discount_factor = 1.0 - max(0.0, min(100.0, total_discount)) / 100.0
     for product in list_order_products(str(order_id), pharmacy):
         if pharmacy is None and not str(product.get("pharmacy", "")).strip():
             continue
@@ -2579,7 +2750,12 @@ def build_order_totals(
             continue
         total_quantity += quantity
         total_ppv += quantity * parse_quantity(product.get("ppv", ""))
-        total_ttc += quantity * parse_quantity(product.get("pph", ""))
+        if use_final_invoice_prices:
+            total_ttc += quantity * invoice_final_pph(
+                product, invoice_values, discount_factor
+            )
+        else:
+            total_ttc += quantity * parse_quantity(product.get("pph", ""))
     total_ppv = round(total_ppv, 2)
     total_ttc = round(total_ttc, 2)
     return {
@@ -2587,6 +2763,44 @@ def build_order_totals(
         "ppv": format_price(total_ppv) if total_ppv else "0,00",
         "ttc": format_price(total_ttc) if total_ttc else "0,00",
     }
+
+
+def invoice_final_pph(
+    product: dict[str, object],
+    invoice_values: dict[str, dict[str, object]],
+    discount_factor: float = 1.0,
+) -> float:
+    """Return the PPH after product and additional invoice discounts."""
+    base_pph = parse_optional_number(
+        product.get("pph", product.get("unit_price", ""))
+    ) or 0.0
+    invoice_row = invoice_values.get(invoice_product_key(product), {})
+    discounted_pph = parse_optional_number(invoice_row.get("pph_discounted", ""))
+    if discounted_pph is None:
+        discounted_pph = base_pph
+    return discounted_pph * discount_factor
+
+
+def apply_final_invoice_prices(
+    order_id: str,
+    products: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Copy printable products with the final invoice PPH applied."""
+    invoice_values = {
+        invoice_product_key(row): row
+        for row in list_invoice_products(order_id)
+    }
+    total_discount = parse_optional_number(get_invoice_order_discount(order_id)) or 0.0
+    discount_factor = 1.0 - max(0.0, min(100.0, total_discount)) / 100.0
+    return [
+        product
+        | {
+            "unit_price": format_price(
+                invoice_final_pph(product, invoice_values, discount_factor)
+            )
+        }
+        for product in products
+    ]
 
 
 def build_aggregated_print_products(order_id: str) -> list[dict[str, str]]:
@@ -2664,6 +2878,15 @@ def invoice_subtotal(products: list[dict[str, object]]) -> float:
             discounted = parse_optional_number(product.get("unit_price", "")) or 0.0
         subtotal += parse_quantity(product.get("quantity", "")) * discounted
     return round(subtotal, 2)
+
+
+def invoice_initial_total(products: list[dict[str, object]]) -> float:
+    """Return the total before any per-product or global discount."""
+    total = 0.0
+    for product in products:
+        pph = parse_optional_number(product.get("unit_price", "")) or 0.0
+        total += parse_quantity(product.get("quantity", "")) * pph
+    return round(total, 2)
 
 
 def apply_order_total_discount(amount: float, discount_pct: float) -> float:
@@ -2856,6 +3079,35 @@ def build_order_product_catalog() -> list[dict[str, str]]:
     return catalog
 
 
+def build_product_selection_templates() -> list[dict[str, object]]:
+    templates: list[dict[str, object]] = []
+    seen: set[tuple[str, str]] = set()
+    for order in list_records("purchaseorders"):
+        subject = str(order.get("subject", "")).strip()
+        supplier = str(order.get("supplier", "")).strip()
+        key = (subject.casefold(), supplier.casefold())
+        if not subject or not supplier or key in seen:
+            continue
+        product_ids = list_order_product_template(subject, supplier)
+        if product_ids is None:
+            continue
+        seen.add(key)
+        templates.append(
+            {
+                "subject": subject,
+                "supplier": supplier,
+                "product_ids": product_ids,
+            }
+        )
+    return sorted(
+        templates,
+        key=lambda template: (
+            str(template.get("subject", "")).casefold(),
+            str(template.get("supplier", "")).casefold(),
+        ),
+    )
+
+
 def build_supplier_options(catalog: list[dict[str, str]], current_supplier: object) -> list[str]:
     current = str(current_supplier or "").strip()
     suppliers = sorted({item["supplier"] for item in catalog if item.get("supplier")})
@@ -2873,10 +3125,14 @@ def next_order_number() -> str:
     return str((max(numbers) if numbers else 105900) + 1)
 
 
-def selected_products_from_form(catalog: list[dict[str, str]]) -> list[dict[str, str]]:
+def selected_products_from_form(
+    catalog: list[dict[str, str]],
+    allowed_product_ids: list[str] | None = None,
+) -> list[dict[str, str]]:
     selected_ids = request.form.getlist("selected_product_id")
     supplier = request.form.get("supplier_id", "").strip()
     catalog_by_id = {item["id"]: item for item in catalog if item.get("id")}
+    allowed_ids = set(allowed_product_ids) if allowed_product_ids is not None else None
     selected_products = []
     seen = set()
     for product_id in selected_ids:
@@ -2884,6 +3140,8 @@ def selected_products_from_form(catalog: list[dict[str, str]]) -> list[dict[str,
             continue
         product = catalog_by_id.get(product_id)
         if not product:
+            continue
+        if allowed_ids is not None and product_id not in allowed_ids:
             continue
         if supplier and product.get("supplier") != supplier:
             continue

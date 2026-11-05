@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 import uuid
 from datetime import date, datetime
@@ -191,9 +192,11 @@ def init_db() -> None:
     for table_key in EDITABLE_TABLE_KEYS:
         ensure_records_table(table_key)
     ensure_order_products_table()
+    ensure_order_product_templates_table()
     ensure_invoice_products_table()
     ensure_invoice_order_totals_table()
     ensure_report_opening_balances_table()
+    normalize_existing_tax_values()
 
 
 def ensure_groups_table() -> None:
@@ -619,6 +622,133 @@ def ensure_order_products_table() -> None:
     db.commit()
 
 
+def ensure_order_product_templates_table() -> None:
+    db = get_db()
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS order_product_templates (
+            group_id TEXT NOT NULL DEFAULT 'default',
+            subject TEXT NOT NULL DEFAULT '',
+            supplier TEXT NOT NULL DEFAULT '',
+            product_id TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY (group_id, subject, supplier, product_id)
+        )
+        """
+    )
+    existing_columns = table_columns(db, "order_product_templates")
+    required_columns = {
+        "group_id": "TEXT NOT NULL DEFAULT 'default'",
+        "subject": "TEXT NOT NULL DEFAULT ''",
+        "supplier": "TEXT NOT NULL DEFAULT ''",
+        "product_id": "TEXT NOT NULL DEFAULT ''",
+    }
+    for column, definition in required_columns.items():
+        if column not in existing_columns:
+            db.execute(
+                f"ALTER TABLE order_product_templates ADD COLUMN {column} {definition}"
+            )
+    db.commit()
+
+
+def normalize_tax_value(value: object) -> str:
+    """Store VAT values in the canonical format used by products and orders."""
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    match = re.search(r"(0|7|10|20)(?:[.,]0+)?\s*%", raw)
+    if match:
+        return f"{match.group(1)}%"
+    compact = raw.replace(" ", "").replace(",", ".")
+    if compact in {"0", "0.0", "0.00"} or "exoner" in compact.lower():
+        return "0%"
+    if compact in {"7", "7.0", "7.00"}:
+        return "7%"
+    if compact in {"10", "10.0", "10.00"}:
+        return "10%"
+    if compact in {"20", "20.0", "20.00"}:
+        return "20%"
+    return raw
+
+
+def normalize_existing_tax_values() -> None:
+    """Migrate legacy VAT labels in the products and order-products tables."""
+    db = get_db()
+    for table_name in ("products", "order_products"):
+        if not table_exists(db, table_name):
+            continue
+        rows = db.execute(f"SELECT id, tax FROM {table_name}").fetchall()
+        for row in rows:
+            current = str(row["tax"] or "").strip()
+            normalized = normalize_tax_value(current)
+            if normalized != current:
+                db.execute(
+                    f"UPDATE {table_name} SET tax = ? WHERE id = ?",
+                    (normalized, row["id"]),
+                )
+    db.commit()
+
+
+def list_order_product_template(subject: str, supplier: str) -> list[str] | None:
+    """Return a saved product selection, or None when no template exists."""
+    normalized_subject = str(subject or "").strip()
+    normalized_supplier = str(supplier or "").strip()
+    if not normalized_subject or not normalized_supplier:
+        return None
+    rows = get_db().execute(
+        """
+        SELECT product_id
+        FROM order_product_templates
+        WHERE group_id = ?
+          AND lower(subject) = lower(?)
+          AND lower(supplier) = lower(?)
+        ORDER BY product_id
+        """,
+        (current_group_id(), normalized_subject, normalized_supplier),
+    ).fetchall()
+    if not rows:
+        return None
+    return [str(row["product_id"]).strip() for row in rows if str(row["product_id"]).strip()]
+
+
+def save_order_product_template(
+    subject: str,
+    supplier: str,
+    product_ids: Iterable[object],
+) -> None:
+    normalized_subject = str(subject or "").strip()
+    normalized_supplier = str(supplier or "").strip()
+    if not normalized_subject or not normalized_supplier:
+        return
+    db = get_db()
+    group_id = current_group_id()
+    db.execute(
+        """
+        DELETE FROM order_product_templates
+        WHERE group_id = ? AND lower(subject) = lower(?) AND lower(supplier) = lower(?)
+        """,
+        (group_id, normalized_subject, normalized_supplier),
+    )
+    cleaned_ids = sorted(
+        {
+            str(product_id).strip()
+            for product_id in product_ids
+            if str(product_id).strip()
+        }
+    )
+    if cleaned_ids:
+        db.executemany(
+            """
+            INSERT INTO order_product_templates (group_id, subject, supplier, product_id)
+            VALUES (?, ?, ?, ?)
+            """,
+            [
+                (group_id, normalized_subject, normalized_supplier, product_id)
+                for product_id in cleaned_ids
+            ],
+        )
+    db.commit()
+
+
 def ensure_invoice_products_table() -> None:
     db = get_db()
     id_definition = (
@@ -985,7 +1115,7 @@ def save_order_products(
                 name,
                 str(product.get("ppv", product.get("sale_price", ""))).strip(),
                 str(product.get("pph", product.get("unit_price", ""))).strip(),
-                str(product.get("tax", "")).strip(),
+                normalize_tax_value(product.get("tax", "")),
                 str(product.get("barcode", "")).strip(),
                 str(product.get("quantity", "")).strip(),
                 position,
@@ -1030,7 +1160,7 @@ def replace_order_products(
                 name,
                 str(product.get("ppv", product.get("sale_price", ""))).strip(),
                 str(product.get("pph", product.get("unit_price", ""))).strip(),
-                str(product.get("tax", "")).strip(),
+                normalize_tax_value(product.get("tax", "")),
                 str(product.get("barcode", "")).strip(),
                 str(product.get("quantity", "")).strip(),
                 position,
@@ -1205,6 +1335,8 @@ def normalize_field_value(field: str, value: object) -> object:
         return normalize_date_value(value)
     if field in {"ppv", "pph"}:
         return normalize_money_value(value)
+    if field == "tax":
+        return normalize_tax_value(value)
     if value is None:
         return ""
     if isinstance(value, bool):

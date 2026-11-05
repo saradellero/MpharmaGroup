@@ -26,7 +26,7 @@
           <tr>
             <th>Producto</th>
             {% for pharmacy in recap.pharmacies %}
-              <th>{{ pharmacy }}</th>
+              <th class="pharmacy-header-cell pharmacy-column-{{ loop.index0 % 2 }}">{{ ui.pharmacy_header(pharmacy) }}</th>
             {% endfor %}
             <th>Cantidad total</th>
             <th>PPH</th>
@@ -38,7 +38,7 @@
             <tr>
               <td>{{ product.name }}</td>
               {% for pharmacy in recap.pharmacies %}
-                <td class="numeric-cell">{{ product.amounts.get(pharmacy, "0") }}</td>
+                <td class="numeric-cell pharmacy-column-{{ loop.index0 % 2 }}">{{ product.amounts.get(pharmacy, "0") }}</td>
               {% endfor %}
               <td class="numeric-cell">{{ product.quantity }}</td>
               <td class="numeric-cell">{{ product.pph }}</td>
@@ -47,14 +47,32 @@
           {% endfor %}
         </tbody>
         <tfoot>
-          <tr class="summary-total-row">
-            <th>Total PPH</th>
+          <tr class="summary-initial-total-row">
+            <th>Total PPH inicial</th>
             {% for pharmacy in recap.pharmacies %}
-              <th class="numeric-cell">{{ recap.totals.get(pharmacy, "0") }}</th>
+              <th class="numeric-cell pharmacy-column-{{ loop.index0 % 2 }}">{{ recap.initial_totals.get(pharmacy, "0") }}</th>
+            {% endfor %}
+            <th class="numeric-cell">{{ recap.grand_quantity }}</th>
+            <th class="numeric-cell">-</th>
+            <th class="numeric-cell">{{ recap.grand_initial_total }}</th>
+          </tr>
+          <tr class="summary-total-row">
+            <th>Total PPH descontado</th>
+            {% for pharmacy in recap.pharmacies %}
+              <th class="numeric-cell pharmacy-column-{{ loop.index0 % 2 }}">{{ recap.totals.get(pharmacy, "0") }}</th>
             {% endfor %}
             <th class="numeric-cell">{{ recap.grand_quantity }}</th>
             <th class="numeric-cell">-</th>
             <th class="numeric-cell">{{ recap.grand_total }}</th>
+          </tr>
+          <tr class="summary-gain-row">
+            <th>Ganancia acumulada</th>
+            {% for pharmacy in recap.pharmacies %}
+              <th class="numeric-cell pharmacy-column-{{ loop.index0 % 2 }}">{{ recap.gains.get(pharmacy, "0") }}</th>
+            {% endfor %}
+            <th class="numeric-cell">-</th>
+            <th class="numeric-cell">-</th>
+            <th class="numeric-cell">{{ recap.grand_gain }}</th>
           </tr>
         </tfoot>
       </table>

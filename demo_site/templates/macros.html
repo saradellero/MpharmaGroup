@@ -133,16 +133,30 @@
 </div>
 {%- endmacro %}
 
-{% macro render_table(table, rows, table_key, q="", can_edit=false, pagination=None, locked_order_ids=[]) -%}
+{% macro pharmacy_header(name) -%}
+  {% set clean_name = name|replace("Pharmacie ", "")|replace("PHARMACIE ", "")|trim %}
+  <span class="pharmacy-column-header" aria-label="{{ clean_name }}">
+    {% for word in clean_name.split() %}<span>{{ word }}</span>{% endfor %}
+  </span>
+{%- endmacro %}
+
+{% macro render_table(table, rows, table_key, q="", can_edit=false, pagination=None, locked_order_ids=[], product_suggestions=[]) -%}
 {% set has_row_actions = can_edit and table_key in ["contacts", "purchaseorders"] %}
 {% set hide_password_column = table_key == "users" and not can_edit %}
 {% set visible_column_count = table.columns|length - (1 if hide_password_column else 0) %}
 <section class="block">
   <div class="block-toolbar">
     <form class="search-form" method="get">
-      <input class="input input-search" type="search" name="q" value="{{ q }}" placeholder="Buscar">
-      <button class="tool-btn" type="submit" title="Buscar">?</button>
-      <a class="tool-btn" href="{{ request.path }}" title="Recargar">R</a>
+      {% if table_key == "products" %}
+        <div class="table-search-autocomplete">
+          <input class="input input-search" id="products-table-search" type="search" name="q" value="{{ q }}" placeholder="Buscar" autocomplete="off">
+          <div class="autocomplete-list" id="products-table-suggestions" hidden></div>
+        </div>
+      {% else %}
+        <input class="input input-search" type="search" name="q" value="{{ q }}" placeholder="Buscar">
+      {% endif %}
+      <button class="tool-btn" type="submit" title="Buscar" aria-label="Buscar">🔍</button>
+      <a class="tool-btn tool-btn-refresh" href="{{ request.path }}" title="Recargar" aria-label="Recargar">↻ Refresh</a>
     </form>
     <a class="btn btn-white" href="javascript:window.print()">Imprimir</a>
   </div>

@@ -65,10 +65,19 @@
       </tbody>
       {% if products %}
         <tfoot>
+          <tr class="invoice-initial-total-row">
+            <th colspan="7">Total PPH inicial</th>
+            <th class="numeric-cell">{{ quantity_total }}</th>
+            <th class="numeric-cell" data-total="initial-amount">{{ initial_amount }}</th>
+          </tr>
           <tr class="invoice-total-row">
             <th colspan="7">Subtotal PPH descontado</th>
             <th class="numeric-cell" data-total="quantity">{{ quantity_total }}</th>
             <th class="numeric-cell" data-total="amount">{{ subtotal_amount }}</th>
+          </tr>
+          <tr class="invoice-product-gain-row">
+            <th colspan="8">Ganancia por descuentos de productos</th>
+            <th class="numeric-cell" data-total="product-gain">{{ product_discount_amount }}</th>
           </tr>
           <tr class="invoice-global-discount-row">
             <th colspan="7">Descuento total adicional (%)</th>
@@ -76,6 +85,14 @@
               <input class="input invoice-input" type="text" inputmode="decimal" name="invoice_total_discount" data-total-discount value="{{ total_discount|default('') }}" aria-label="Descuento total adicional">
             </th>
             <th class="numeric-cell" data-total="final-amount">{{ final_amount }}</th>
+          </tr>
+          <tr class="invoice-additional-gain-row">
+            <th colspan="8">Ganancia por descuento adicional</th>
+            <th class="numeric-cell" data-total="additional-gain">{{ additional_discount_amount }}</th>
+          </tr>
+          <tr class="invoice-gain-row">
+            <th colspan="8">Ganancia acumulada</th>
+            <th class="numeric-cell" data-total="gain-amount">{{ total_gain }}</th>
           </tr>
         </tfoot>
       {% endif %}
@@ -122,9 +139,25 @@
       }
       var totalDiscountInput = table.querySelector("[data-total-discount]");
       var finalAmount = table.querySelector('[data-total="final-amount"]');
+      var initialAmountCell = table.querySelector('[data-total="initial-amount"]');
+      var productGainCell = table.querySelector('[data-total="product-gain"]');
+      var additionalGainCell = table.querySelector('[data-total="additional-gain"]');
+      var gainAmountCell = table.querySelector('[data-total="gain-amount"]');
+      var initialAmount = initialAmountCell ? (parseNumber(initialAmountCell.textContent) || 0) : 0;
+      var productGain = initialAmount - amount;
       if (finalAmount) {
         var discount = totalDiscountInput ? (parseNumber(totalDiscountInput.value) || 0) : 0;
-        finalAmount.textContent = formatNumber(Math.max(0, amount * (1 - discount / 100)));
+        var finalValue = Math.max(0, amount * (1 - discount / 100));
+        finalAmount.textContent = formatNumber(finalValue);
+        if (productGainCell) {
+          productGainCell.textContent = formatNumber(productGain);
+        }
+        if (additionalGainCell) {
+          additionalGainCell.textContent = formatNumber(amount - finalValue);
+        }
+        if (gainAmountCell) {
+          gainAmountCell.textContent = formatNumber(initialAmount - finalValue);
+        }
       }
     }
 

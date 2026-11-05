@@ -65,6 +65,12 @@
                     {% endif %}
                     {% if key in ['date', 'deadline', 'updated', 'birthdate'] %}
                       {{ ui.date_control("record_" ~ row.id ~ "_" ~ key, row.get(key, ''), row_locked) }}
+                    {% elif table_key == 'products' and key == 'tax' %}
+                      <select class="input product-tax-select" name="record_{{ row.id }}_{{ key }}"{% if row_locked %} disabled{% endif %}>
+                        {% for tax_option in ['0%', '7%', '10%', '20%'] %}
+                          <option value="{{ tax_option }}"{% if row.get(key, '') == tax_option %} selected{% endif %}>{{ tax_option }}</option>
+                        {% endfor %}
+                      </select>
                     {% else %}
                       <input class="input" type="text" name="record_{{ row.id }}_{{ key }}" value="{{ row.get(key, '')|price2 if table_key == 'products' and key in ['ppv', 'pph'] else row.get(key, '') }}"{% if row_locked %} readonly{% endif %}{% if suggestion_list %} list="{{ suggestion_list }}" autocomplete="off"{% endif %}>
                     {% endif %}
@@ -86,6 +92,13 @@
                   {% endif %}
                   {% if key in ['date', 'deadline', 'updated', 'birthdate'] %}
                     {{ ui.date_control("new_" ~ key) }}
+                  {% elif table_key == 'products' and key == 'tax' %}
+                    <select class="input product-tax-select" name="new_{{ key }}">
+                      <option value="">IVA</option>
+                      {% for tax_option in ['0%', '7%', '10%', '20%'] %}
+                        <option value="{{ tax_option }}">{{ tax_option }}</option>
+                      {% endfor %}
+                    </select>
                   {% else %}
                     <input class="input" type="text" name="new_{{ key }}" placeholder="{{ 'Nuevo registro' if loop.first else label }}"{% if table_key == 'products' and key in ['ppv', 'pph'] %} inputmode="decimal"{% endif %}{% if suggestion_list %} list="{{ suggestion_list }}" autocomplete="off"{% endif %}>
                   {% endif %}
@@ -124,7 +137,81 @@
     {{ ui.pagination_controls(pagination) }}
   </section>
 {% else %}
-  {{ ui.render_table(table, rows, table_key, q, can_edit, pagination, locked_order_ids) }}
+  {{ ui.render_table(table, rows, table_key, q, can_edit, pagination, locked_order_ids, product_suggestions) }}
+  {% if table_key == "products" %}
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        var input = document.getElementById("products-table-search");
+        var suggestions = document.getElementById("products-table-suggestions");
+        var names = {{ product_suggestions|tojson }};
+        if (!input || !suggestions) {
+          return;
+        }
+
+        function normalize(value) {
+          return String(value || "").toLocaleLowerCase();
+        }
+
+        function escapeHtml(value) {
+          return String(value || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+        }
+
+        function hideSuggestions() {
+          suggestions.hidden = true;
+          suggestions.innerHTML = "";
+        }
+
+        function renderSuggestions() {
+          var query = normalize(input.value.trim());
+          suggestions.innerHTML = "";
+          if (!query) {
+            hideSuggestions();
+            return;
+          }
+
+          var matches = names
+            .filter(function (name) {
+              return normalize(name).indexOf(query) !== -1;
+            })
+            .sort(function (a, b) {
+              return normalize(a).localeCompare(normalize(b));
+            })
+            .slice(0, 12);
+
+          suggestions.hidden = false;
+          if (!matches.length) {
+            suggestions.innerHTML = '<div class="autocomplete-empty">Sin coincidencias.</div>';
+            return;
+          }
+
+          matches.forEach(function (name) {
+            var option = document.createElement("button");
+            option.type = "button";
+            option.className = "autocomplete-option";
+            option.innerHTML = "<strong>" + escapeHtml(name) + "</strong>";
+            option.addEventListener("click", function () {
+              input.value = name;
+              hideSuggestions();
+              input.form.submit();
+            });
+            suggestions.appendChild(option);
+          });
+        }
+
+        input.addEventListener("input", renderSuggestions);
+        input.addEventListener("focus", renderSuggestions);
+        document.addEventListener("click", function (event) {
+          if (!event.target.closest(".table-search-autocomplete")) {
+            hideSuggestions();
+          }
+        });
+      });
+    </script>
+  {% endif %}
   {% if order_summary %}
     <section class="block order-summary-block">
       <div class="summary-heading">
@@ -140,7 +227,7 @@
               <tr>
                 <th>Producto</th>
                 {% for pharmacy in order_summary.pharmacies %}
-                  <th>{{ pharmacy }}</th>
+                  <th class="pharmacy-header-cell pharmacy-column-{{ loop.index0 % 2 }}">{{ ui.pharmacy_header(pharmacy) }}</th>
                 {% endfor %}
                 <th>Total</th>
               </tr>
@@ -150,7 +237,7 @@
                 <tr>
                   <td>{{ product.name }}</td>
                   {% for pharmacy in order_summary.pharmacies %}
-                    <td class="numeric-cell">{{ product.quantities.get(pharmacy, "") }}</td>
+                    <td class="numeric-cell pharmacy-column-{{ loop.index0 % 2 }}">{{ product.quantities.get(pharmacy, "") }}</td>
                   {% endfor %}
                   <td class="numeric-cell row-total">{{ product.total }}</td>
                 </tr>
@@ -158,7 +245,7 @@
               <tr class="summary-total-row">
                 <th>Total</th>
                 {% for pharmacy in order_summary.pharmacies %}
-                  <th class="numeric-cell">{{ order_summary.totals.get(pharmacy, "") }}</th>
+                  <th class="numeric-cell pharmacy-column-{{ loop.index0 % 2 }}">{{ order_summary.totals.get(pharmacy, "") }}</th>
                 {% endfor %}
                 <th class="numeric-cell">{{ order_summary.grand_total }}</th>
               </tr>

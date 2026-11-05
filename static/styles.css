@@ -600,6 +600,16 @@ textarea {
   width: 260px;
 }
 
+.table-search-autocomplete {
+  position: relative;
+}
+
+.table-search-autocomplete .autocomplete-list {
+  right: 0;
+  left: 0;
+  width: 260px;
+}
+
 .tool-btn {
   display: inline-grid;
   min-width: 33px;
@@ -611,6 +621,10 @@ textarea {
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 2px;
+}
+
+.tool-btn-refresh {
+  min-width: 92px;
 }
 
 .tool-btn.disabled {
@@ -643,6 +657,31 @@ textarea {
   color: #374047;
   font-weight: 700;
   background: #eef1f3;
+}
+
+.data-table th.pharmacy-header-cell {
+  min-width: 112px;
+  max-width: 170px;
+  padding: 8px 6px;
+  font-size: clamp(10px, 1vw, 13px);
+  line-height: 1.05;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.pharmacy-column-header {
+  display: inline-flex;
+  flex-direction: column;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+  text-align: center;
+}
+
+.pharmacy-column-header span {
+  display: block;
+  white-space: nowrap;
 }
 
 .data-table tbody tr:hover {
@@ -767,6 +806,18 @@ textarea {
   color: var(--text);
   font-weight: 800;
   background: #f5f8f8;
+}
+
+.summary-initial-total-row th {
+  color: var(--navy);
+  font-weight: 800;
+  background: #fff4b8;
+}
+
+.summary-gain-row th {
+  color: #ffffff;
+  font-weight: 800;
+  background: #0f9f95;
 }
 
 .summary-empty {
@@ -1272,6 +1323,37 @@ textarea {
   text-align: left;
 }
 
+.invoice-initial-total-row th,
+.invoice-product-gain-row th,
+.invoice-additional-gain-row th,
+.invoice-gain-row th {
+  font-weight: 800;
+  text-align: right;
+}
+
+.invoice-initial-total-row th {
+  color: var(--navy);
+  background: #fff4b8;
+}
+
+.invoice-initial-total-row th:first-child,
+.invoice-product-gain-row th:first-child,
+.invoice-additional-gain-row th:first-child,
+.invoice-gain-row th:first-child {
+  text-align: left;
+}
+
+.invoice-product-gain-row th,
+.invoice-additional-gain-row th {
+  color: var(--navy);
+  background: #f4faf9;
+}
+
+.invoice-gain-row th {
+  color: #ffffff;
+  background: #0f9f95;
+}
+
 .invoice-global-discount-row th,
 .invoice-global-discount-row td {
   background: #eef8f7;
@@ -1331,6 +1413,10 @@ textarea {
   width: min(560px, 100%);
 }
 
+.object-search-field {
+  position: relative;
+}
+
 .autocomplete-list {
   position: absolute;
   z-index: 20;
@@ -1387,8 +1473,33 @@ textarea {
   min-width: 1120px;
 }
 
+.manager-summary-table th:first-child,
 .manager-summary-table td:first-child {
+  width: 78px;
+  min-width: 78px;
+  max-width: 88px;
+  padding-right: 5px;
+  padding-left: 5px;
+  text-align: center;
+}
+
+.manager-summary-table th:nth-child(2),
+.manager-summary-table td:nth-child(2) {
   min-width: 240px;
+}
+
+.manager-summary-table th:nth-child(3),
+.manager-summary-table th:nth-child(4),
+.manager-summary-table td:nth-child(3),
+.manager-summary-table td:nth-child(4) {
+  width: 104px;
+  min-width: 104px;
+}
+
+.manager-summary-table th:nth-child(5),
+.manager-summary-table td:nth-child(5) {
+  width: 132px;
+  min-width: 132px;
 }
 
 .manager-summary-table td:first-child small {
@@ -1404,8 +1515,25 @@ textarea {
 }
 
 .manager-price-input {
-  min-width: 110px !important;
-  width: 110px;
+  min-width: 88px !important;
+  width: 88px !important;
+}
+
+.manager-tax-input {
+  min-width: 122px !important;
+  width: 122px !important;
+  max-width: 132px;
+}
+
+.manager-summary-table th:last-child,
+.manager-summary-table td.manager-row-total {
+  width: 72px;
+  min-width: 72px;
+  padding-right: 8px;
+  padding-left: 8px;
+  color: var(--navy);
+  font-weight: 800;
+  text-align: center;
 }
 
 .manager-new-product-fields {
@@ -1418,6 +1546,51 @@ textarea {
   min-width: 180px;
 }
 
+.manager-new-product-autocomplete {
+  position: relative;
+}
+
+.manager-new-product-autocomplete .autocomplete-list {
+  right: auto;
+  left: 0;
+  width: min(520px, 70vw);
+}
+
+.manager-products-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 190px;
+  align-items: start;
+  gap: 14px;
+}
+
+.manager-quantity-summary {
+  position: sticky;
+  top: 74px;
+  display: grid;
+  gap: 8px;
+  min-height: 108px;
+  padding: 16px 14px;
+  color: var(--navy);
+  background: linear-gradient(145deg, #eef8f7 0%, #e3eff7 100%);
+  border: 1px solid #a9d9d4;
+  border-left: 4px solid var(--teal);
+  border-radius: 10px;
+  box-shadow: 0 6px 16px rgba(24, 45, 73, 0.08);
+}
+
+.manager-quantity-summary span,
+.manager-quantity-summary small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.manager-quantity-summary strong {
+  color: var(--teal-dark);
+  font-size: 28px;
+  line-height: 1;
+}
+
 .manager-new-product-fields strong {
   color: var(--teal-dark);
 }
@@ -1428,6 +1601,11 @@ textarea {
 
 .records-edit-table .input {
   min-width: 150px;
+}
+
+.records-edit-table .product-tax-select {
+  min-width: 96px;
+  width: 96px;
 }
 
 .records-edit-table .new-row td {
@@ -2630,12 +2808,42 @@ body.app-page {
 }
 
 .data-table tbody tr:nth-child(even) {
-  background: #fbfefe;
+  background: #edf4f7;
 }
 
 .data-table tbody tr:nth-child(even):hover,
 .data-table tbody tr:hover {
-  background: #eaf8f5;
+  background: #dcefeb;
+}
+
+.data-table tbody tr:nth-child(odd) td,
+.data-table tbody tr:nth-child(even) td {
+  background: #ffffff;
+}
+
+.data-table tbody tr:nth-child(even) td {
+  background: #edf4f7;
+}
+
+.data-table tbody tr:hover td {
+  background: #dcefeb;
+}
+
+.data-table .pharmacy-column-0 {
+  background: #e5eff3;
+}
+
+.data-table .pharmacy-column-1 {
+  background: #ffffff;
+}
+
+.data-table tbody tr:nth-child(even) .pharmacy-column-0 {
+  background: #dce9ee;
+}
+
+.data-table tbody tr:hover .pharmacy-column-0,
+.data-table tbody tr:hover .pharmacy-column-1 {
+  background: #d1e7e3;
 }
 
 .order-summary-meta div {
@@ -2732,4 +2940,38 @@ body.app-page {
   background: linear-gradient(90deg, #d91f27 0%, #ef2e1e 100%);
   font-size: 13px;
   line-height: 1.3;
+}
+
+/* Keep pharmacy column bands stable across every data row. */
+.data-table th.pharmacy-column-0,
+.data-table td.pharmacy-column-0 {
+  background: #e1edf2 !important;
+}
+
+.data-table th.pharmacy-column-1,
+.data-table td.pharmacy-column-1 {
+  background: #ffffff !important;
+}
+
+.report-detail-wrap .report-detail-table tbody tr.report-opening-row td,
+.report-detail-wrap .report-detail-table tbody tr.report-total-row td {
+  background: inherit !important;
+}
+
+.report-detail-wrap .report-detail-table tbody tr.report-opening-row td {
+  background: #fff4b8 !important;
+}
+
+.report-detail-wrap .report-detail-table tbody tr.report-total-row td {
+  background: linear-gradient(90deg, #d91f27 0%, #ef2e1e 100%) !important;
+}
+
+@media (max-width: 1100px) {
+  .manager-products-editor {
+    grid-template-columns: 1fr;
+  }
+
+  .manager-quantity-summary {
+    position: static;
+  }
 }

@@ -54,22 +54,27 @@
       <h2>Productos del proveedor y cantidades</h2>
       <p class="bulk-upload__hint">Se muestran todos los productos del proveedor seleccionado. El gestor puede actualizar PPV, PPH, IVA y las cantidades por farmacia antes de guardar.</p>
       <div class="table-wrap">
-        <table class="data-table editable-table manager-summary-table">
+          <table class="data-table editable-table manager-summary-table">
           <thead>
             <tr>
+              <th>Selección</th>
               <th>Producto</th>
               <th>PPV</th>
               <th>PPH</th>
               <th>IVA</th>
               {% for pharmacy in manager_matrix.pharmacies %}
-                <th>{{ pharmacy }}</th>
+                <th class="pharmacy-header-cell pharmacy-column-{{ loop.index0 % 2 }}">{{ ui.pharmacy_header(pharmacy) }}</th>
               {% endfor %}
+              <th>Total</th>
             </tr>
           </thead>
           <tbody>
             {% for row in manager_matrix.rows %}
               {% set row_index = loop.index0 %}
               <tr>
+                <td class="row-select-cell">
+                  <input class="row-select-checkbox" type="checkbox" name="manager_selected_product_id" value="{{ row.id }}" {% if row.selected %}checked{% endif %} aria-label="Mostrar {{ row.name }} a las farmacias">
+                </td>
                 <td>
                   <strong>{{ row.name }}</strong>
                   <small>{{ row.supplier }}</small>
@@ -81,36 +86,55 @@
                   <input class="input manager-price-input" name="manager_product_pph_{{ row_index }}" value="{{ row.pph|price2 }}">
                 </td>
                 <td>
-                  <input class="input manager-price-input" name="manager_product_tax_{{ row_index }}" value="{{ row.tax }}">
+                  <select class="input manager-price-input manager-tax-input" name="manager_product_tax_{{ row_index }}">
+                    {% set tax_options = ["0%", "7%", "10%", "20%"] %}
+                    {% for tax_option in tax_options %}
+                      <option value="{{ tax_option }}"{% if row.tax == tax_option %} selected{% endif %}>{{ tax_option }}</option>
+                    {% endfor %}
+                  </select>
                 </td>
                 {% for pharmacy in manager_matrix.pharmacies %}
-                  <td>
-                    <input class="input manager-quantity-input" type="number" min="0" step="1" name="manager_quantity_{{ row_index }}_{{ loop.index0 }}" value="{{ row.quantities.get(pharmacy, "0") }}">
+                  <td class="pharmacy-column-{{ loop.index0 % 2 }}">
+                    <input class="input manager-quantity-input" type="number" min="0" step="1" name="manager_quantity_{{ row_index }}_{{ loop.index0 }}" data-manager-total-target="manager-row-total-{{ row_index }}" value="{{ row.quantities.get(pharmacy, "0") }}">
                   </td>
                 {% endfor %}
+                <td class="manager-row-total" id="manager-row-total-{{ row_index }}">{{ row.total_quantity|default("0") }}</td>
               </tr>
             {% else %}
-              <tr><td colspan="{{ manager_matrix.pharmacies|length + 4 }}" class="empty">No hay productos disponibles para el proveedor seleccionado.</td></tr>
+              <tr><td colspan="{{ manager_matrix.pharmacies|length + 6 }}" class="empty">No hay productos disponibles para el proveedor seleccionado.</td></tr>
             {% endfor %}
             <tr class="new-row manager-new-product-row">
+              <td class="row-select-cell"></td>
               <td class="manager-new-product-fields">
                 <strong>Nueva linea de producto</strong>
-                <input class="input" name="new_product_name" placeholder="Producto obligatorio" value="{{ new_product_values.get('name', '') }}">
+                <div class="manager-new-product-autocomplete">
+                  <input class="input" id="manager-new-product-name" name="new_product_name" placeholder="Escribe el nombre del medicamento" value="{{ new_product_values.get('name', '') }}" autocomplete="off">
+                  <input type="hidden" id="manager-new-product-id" name="new_product_id" value="{{ new_product_values.get('product_id', '') }}">
+                  <div class="autocomplete-list" id="manager-new-product-suggestions" hidden></div>
+                </div>
                 <input class="input" name="new_product_barcode" placeholder="Codigo opcional" value="{{ new_product_values.get('barcode', '') }}">
               </td>
               <td><input class="input manager-price-input" name="new_product_ppv" placeholder="PPV obligatorio" value="{{ new_product_values.get('ppv', '')|price2 }}"></td>
               <td><input class="input manager-price-input" name="new_product_pph" placeholder="PPH obligatorio" value="{{ new_product_values.get('pph', '')|price2 }}"></td>
-              <td><input class="input manager-price-input" name="new_product_tax" placeholder="IVA obligatorio" value="{{ new_product_values.get('tax', '') }}"></td>
+              <td>
+                <select class="input manager-price-input manager-tax-input" name="new_product_tax">
+                  <option value="">IVA obligatorio</option>
+                  {% for tax_option in ["0%", "7%", "10%", "20%"] %}
+                    <option value="{{ tax_option }}"{% if new_product_values.get('tax', '') == tax_option %} selected{% endif %}>{{ tax_option }}</option>
+                  {% endfor %}
+                </select>
+              </td>
               {% for pharmacy in manager_matrix.pharmacies %}
-                <td>
-                  <input class="input manager-quantity-input" type="number" min="0" step="1" name="manager_new_quantity_{{ loop.index0 }}" value="0">
+                <td class="pharmacy-column-{{ loop.index0 % 2 }}">
+                  <input class="input manager-quantity-input" type="number" min="0" step="1" name="manager_new_quantity_{{ loop.index0 }}" data-manager-total-target="manager-new-row-total" value="0">
                 </td>
               {% endfor %}
+              <td class="manager-row-total" id="manager-new-row-total">0</td>
             </tr>
           </tbody>
-        </table>
+          </table>
       </div>
-      <p class="bulk-upload__hint">Para guardar la nueva linea son obligatorios Producto, PPV, PPH e IVA. Las cantidades son opcionales y empiezan en 0.</p>
+      <p class="bulk-upload__hint">Marca los productos que podrán ver y rellenar las farmacias. Para guardar una nueva línea son obligatorios Producto, PPV, PPH e IVA. Las cantidades son opcionales y empiezan en 0.</p>
       <div class="form-actions">
         <a class="btn btn-white" href="{{ url_for('purchaseorder_edit', order_id=order_id) }}">Cancelar</a>
         <button class="btn btn-blue" type="submit">Guardar como gestor</button>
@@ -148,4 +172,111 @@
     <button class="btn btn-blue side-submit" type="submit" form="manager-order-form">Guardar como gestor</button>
   </aside>
 </div>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    var catalog = {{ product_catalog|tojson }};
+    var nameInput = document.getElementById("manager-new-product-name");
+    var productIdInput = document.getElementById("manager-new-product-id");
+    var suggestions = document.getElementById("manager-new-product-suggestions");
+    if (!nameInput || !productIdInput || !suggestions) {
+      return;
+    }
+
+    function normalize(value) {
+      return String(value || "").toLocaleLowerCase();
+    }
+
+    function escapeHtml(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function updateRowTotals() {
+      document.querySelectorAll("input[data-manager-total-target]").forEach(function (input) {
+        var targetId = input.dataset.managerTotalTarget;
+        var target = document.getElementById(targetId);
+        if (!target) {
+          return;
+        }
+        var total = 0;
+        document.querySelectorAll(
+          'input[data-manager-total-target="' + targetId + '"]'
+        ).forEach(function (rowInput) {
+          var quantity = Number(String(rowInput.value || "").replace(",", "."));
+          if (Number.isFinite(quantity) && quantity > 0) {
+            total += quantity;
+          }
+        });
+        target.textContent = total.toLocaleString("{{ 'fr-FR' if language == 'fr' else 'es-ES' }}", {
+          maximumFractionDigits: 2
+        });
+      });
+    }
+
+    function hideSuggestions() {
+      suggestions.hidden = true;
+      suggestions.innerHTML = "";
+    }
+
+    function renderSuggestions() {
+      var query = normalize(nameInput.value.trim());
+      productIdInput.value = "";
+      suggestions.innerHTML = "";
+      if (!query) {
+        hideSuggestions();
+        return;
+      }
+
+      var matches = catalog
+        .filter(function (product) {
+          return normalize(product.name).indexOf(query) !== -1;
+        })
+        .sort(function (a, b) {
+          return normalize(a.name).localeCompare(normalize(b.name));
+        })
+        .slice(0, 12);
+
+      suggestions.hidden = false;
+      if (!matches.length) {
+        suggestions.innerHTML = '<div class="autocomplete-empty">Sin coincidencias en los productos creados.</div>';
+        return;
+      }
+
+      matches.forEach(function (product) {
+        var option = document.createElement("button");
+        option.type = "button";
+        option.className = "autocomplete-option";
+        option.innerHTML =
+          "<strong>" + escapeHtml(product.name) + "</strong>" +
+          "<span>Proveedor: " + escapeHtml(product.supplier) +
+          " · PPV " + escapeHtml(product.ppv) +
+          " · PPH " + escapeHtml(product.pph) +
+          " · IVA " + escapeHtml(product.tax) + "</span>";
+        option.addEventListener("click", function () {
+          nameInput.value = product.name;
+          productIdInput.value = product.id;
+          document.querySelector('[name="new_product_ppv"]').value = product.ppv || "";
+          document.querySelector('[name="new_product_pph"]').value = product.pph || "";
+          document.querySelector('[name="new_product_tax"]').value = product.tax || "";
+          document.querySelector('[name="new_product_barcode"]').value = product.barcode || "";
+          hideSuggestions();
+        });
+        suggestions.appendChild(option);
+      });
+    }
+
+    nameInput.addEventListener("input", renderSuggestions);
+    nameInput.addEventListener("focus", renderSuggestions);
+    document.getElementById("manager-order-form").addEventListener("input", updateRowTotals);
+    updateRowTotals();
+    document.addEventListener("click", function (event) {
+      if (!event.target.closest(".manager-new-product-autocomplete")) {
+        hideSuggestions();
+      }
+    });
+  });
+</script>
 {% endblock %}

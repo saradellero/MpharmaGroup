@@ -21,6 +21,7 @@ from demo_site.storage import (
     list_groups,
     list_group_admins,
     list_order_products,
+    list_order_product_template,
     list_records,
     list_suppliers,
     list_users_for_group,
@@ -371,6 +372,11 @@ class AppTests(unittest.TestCase):
             "Contrasena actual",
             "Nueva contrasena",
             "Confirmar contrasena",
+            "Español",
+            "Refresh",
+            "Sin coincidencias.",
+            "Sin coincidencias en los productos creados.",
+            "Marca los productos que podrán ver y rellenar las farmacias.",
         )
         for label in untranslated_labels:
             with self.subTest(label=label):
@@ -387,6 +393,9 @@ class AppTests(unittest.TestCase):
         self.assertNotIn("Al cerrarlo se bloqueara", html)
         self.assertIn("Chaque cellule affiche le montant du produit", html)
         self.assertIn("Page 1 sur", html)
+        self.assertIn("Espagnol", html)
+        self.assertIn("Actualiser", html)
+        self.assertIn("Aucune correspondance.", html)
         self.assertNotRegex(html, r"Page \d+ de \d+")
 
     def test_login_rejects_unknown_credentials(self):
@@ -586,6 +595,9 @@ class AppTests(unittest.TestCase):
         response = self.client.get("/products?edit=1")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"records-edit-form-products", response.data)
+        self.assertIn(b"product-tax-select", response.data)
+        for tax_option in (b"0%", b"7%", b"10%", b"20%"):
+            self.assertIn(tax_option, response.data)
 
         response = self.client.post(
             "/products",
@@ -947,8 +959,8 @@ class AppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Resumen por farmacia", response.data)
         self.assertIn(b"Pedido 109010", response.data)
-        self.assertIn(b"Pharmacie Atlas", response.data)
-        self.assertIn(b"Pharmacie Riviera", response.data)
+        self.assertIn(b"Atlas", response.data)
+        self.assertIn(b"Riviera", response.data)
         self.assertIn(b"Producto Resumen A", response.data)
         self.assertIn(b"Producto Resumen B", response.data)
         self.assertIn(b"<td class=\"numeric-cell row-total\">5</td>", response.data)
@@ -1074,6 +1086,9 @@ class AppTests(unittest.TestCase):
         self.assertIn(b"Producto Gestor A", manager_response.data)
         self.assertIn(b"Producto Gestor B", manager_response.data)
         self.assertIn(b"new_product_name", manager_response.data)
+        self.assertIn(b"new_product_id", manager_response.data)
+        self.assertIn(b"manager-new-product-suggestions", manager_response.data)
+        self.assertIn(b"Producto Gestor A", manager_response.data)
         self.assertIn(b"new_product_ppv", manager_response.data)
         self.assertIn(b"new_product_pph", manager_response.data)
         self.assertIn(b"new_product_tax", manager_response.data)
@@ -1194,17 +1209,17 @@ class AppTests(unittest.TestCase):
         recap_response = self.client.get("/purchaseorder/recap/109014")
         self.assertEqual(recap_response.status_code, 200)
         self.assertIn(b"Recapitulacion del pedido 109014", recap_response.data)
-        self.assertIn(b"Pharmacie Atlas", recap_response.data)
-        self.assertIn(b"Pharmacie Riviera", recap_response.data)
+        self.assertIn(b"Atlas", recap_response.data)
+        self.assertIn(b"Riviera", recap_response.data)
         self.assertIn(b"Producto Gestor A", recap_response.data)
         self.assertIn(b"Total", recap_response.data)
         self.assertIn(b"Cantidad total", recap_response.data)
-        self.assertIn(b"13,00", recap_response.data)
-        self.assertIn(b"19,00", recap_response.data)
+        self.assertIn(b"10,00", recap_response.data)
+        self.assertIn(b"19,95", recap_response.data)
 
         reports_response = self.client.get("/reports?year=2026")
         self.assertEqual(reports_response.status_code, 200)
-        self.assertIn(b"Pharmacie Atlas", reports_response.data)
+        self.assertIn(b"Atlas", reports_response.data)
         self.assertIn(b"149,75 MAD", reports_response.data)
         self.assertIn(b"Proveedor Gestor", reports_response.data)
         self.assertIn(b"Estadisticas de pedidos por proveedor", reports_response.data)
@@ -1222,6 +1237,7 @@ class AppTests(unittest.TestCase):
         self.assertEqual(pharmacy_print.status_code, 200)
         self.assertIn(b"Pedido de Pharmacie Riviera 109014", pharmacy_print.data)
         self.assertIn(b"Producto Gestor B", pharmacy_print.data)
+        self.assertIn(b">19,95<", pharmacy_print.data)
 
     def test_recap_uses_current_order_prices_without_saved_invoice_rows(self):
         with self.app.app_context():
@@ -1273,6 +1289,8 @@ class AppTests(unittest.TestCase):
         self.assertIn(b"12,00", response.data)
         self.assertIn(b"3", response.data)
         self.assertIn(b"36,00", response.data)
+        self.assertIn(b"Total PPH inicial", response.data)
+        self.assertIn(b"Ganancia acumulada", response.data)
 
         invoice_response = self.client.post(
             "/purchaseorder/invoices/109021",
@@ -1285,6 +1303,11 @@ class AppTests(unittest.TestCase):
         self.assertEqual(invoice_response.status_code, 200)
         self.assertIn(b"Descuento total adicional", invoice_response.data)
         self.assertIn(b"32,40", invoice_response.data)
+        self.assertIn(b"Total PPH inicial", invoice_response.data)
+        self.assertIn(b"Ganancia por descuentos de productos", invoice_response.data)
+        self.assertIn(b"Ganancia por descuento adicional", invoice_response.data)
+        self.assertIn(b"Ganancia acumulada", invoice_response.data)
+        self.assertIn(b"3,60", invoice_response.data)
 
         discounted_recap = self.client.get("/purchaseorder/recap/109021")
         self.assertEqual(discounted_recap.status_code, 200)
@@ -1532,6 +1555,204 @@ class AppTests(unittest.TestCase):
             ],
         )
 
+    def test_manager_can_select_existing_product_and_change_supplier(self):
+        with self.app.app_context():
+            append_records(
+                "products",
+                [
+                    {
+                        "supplier": "Proveedor Antiguo",
+                        "name": "Medicamento Reutilizado",
+                        "ppv": "21,00",
+                        "pph": "13,50",
+                        "tax": "7%",
+                        "barcode": "794001",
+                    }
+                ],
+            )
+            existing_product = next(
+                row
+                for row in list_records("products")
+                if row["name"] == "Medicamento Reutilizado"
+            )
+            append_records(
+                "purchaseorders",
+                [
+                    {
+                        "number": "109017",
+                        "subject": "Pedido con producto reutilizado",
+                        "manager": "Pharmacie Atlas",
+                        "supplier": "Proveedor Nuevo",
+                        "deadline": "2099-11-03",
+                        "updated": "",
+                        "products": "0",
+                        "quantity": "",
+                        "status": "Abierto",
+                        "archived": "0",
+                    }
+                ],
+            )
+            matrix = build_order_manager_matrix("109017")
+
+        self.login_pharmacy()
+        form_data = {
+            "owner_id": "Pharmacie Atlas",
+            "warehouse": "Principal",
+            "subject": "Pedido con producto reutilizado",
+            "deadline": "03/11/2099",
+            "supplier_id": "Proveedor Nuevo",
+            "new_product_id": str(existing_product["id"]),
+            "new_product_name": "Medicamento Reutilizado",
+            "new_product_ppv": "21,00",
+            "new_product_pph": "13,50",
+            "new_product_tax": "7%",
+            "new_product_barcode": "794001",
+        }
+        for pharmacy_index, pharmacy in enumerate(matrix["pharmacies"]):
+            form_data[f"manager_new_quantity_{pharmacy_index}"] = (
+                "4" if pharmacy == "Pharmacie Atlas" else "0"
+            )
+
+        response = self.client.post(
+            "/purchaseorder/edit/109017?mode=manager",
+            data=form_data,
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+
+        with self.app.app_context():
+            updated_product = next(
+                row
+                for row in list_records("products")
+                if str(row["id"]) == str(existing_product["id"])
+            )
+            order_lines = list_order_products("109017")
+        self.assertEqual(updated_product["supplier"], "Proveedor Nuevo")
+        self.assertEqual(
+            [
+                (line["name"], line["supplier"], line["pharmacy"], line["quantity"])
+                for line in order_lines
+            ],
+            [
+                (
+                    "Medicamento Reutilizado",
+                    "Proveedor Nuevo",
+                    "Pharmacie Atlas",
+                    "4",
+                )
+            ],
+        )
+
+    def test_manager_product_selection_is_saved_by_object_and_reused(self):
+        with self.app.app_context():
+            append_records(
+                "products",
+                [
+                    {
+                        "supplier": "Proveedor Plantilla",
+                        "name": "Medicamento Plantilla A",
+                        "ppv": "10",
+                        "pph": "7",
+                        "tax": "7%",
+                        "barcode": "795001",
+                    },
+                    {
+                        "supplier": "Proveedor Plantilla",
+                        "name": "Medicamento Plantilla B",
+                        "ppv": "12",
+                        "pph": "8",
+                        "tax": "7%",
+                        "barcode": "795002",
+                    },
+                ],
+            )
+            template_products = [
+                row
+                for row in list_records("products")
+                if row["name"].startswith("Medicamento Plantilla")
+            ]
+            product_a = next(row for row in template_products if row["name"].endswith("A"))
+            product_b = next(row for row in template_products if row["name"].endswith("B"))
+            append_records(
+                "purchaseorders",
+                [
+                    {
+                        "number": "109026",
+                        "subject": "Pedido Plantilla",
+                        "manager": "Pharmacie Atlas",
+                        "supplier": "Proveedor Plantilla",
+                        "deadline": "2099-11-05",
+                        "updated": "",
+                        "products": "0",
+                        "quantity": "",
+                        "status": "Abierto",
+                        "archived": "0",
+                    }
+                ],
+            )
+            matrix = build_order_manager_matrix("109026")
+
+        self.login_pharmacy()
+        form_data = {
+            "owner_id": "Pharmacie Atlas",
+            "warehouse": "Principal",
+            "subject": "Pedido Plantilla",
+            "deadline": "05/11/2099",
+            "supplier_id": "Proveedor Plantilla",
+            "manager_selected_product_id": str(product_a["id"]),
+        }
+        for row_index, row in enumerate(matrix["rows"]):
+            for pharmacy_index, pharmacy in enumerate(matrix["pharmacies"]):
+                form_data[f"manager_quantity_{row_index}_{pharmacy_index}"] = (
+                    "2"
+                    if row["id"] == str(product_a["id"])
+                    and pharmacy == "Pharmacie Atlas"
+                    else "0"
+                )
+
+        response = self.client.post(
+            "/purchaseorder/edit/109026?mode=manager",
+            data=form_data,
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        with self.app.app_context():
+            self.assertEqual(
+                list_order_product_template("Pedido Plantilla", "Proveedor Plantilla"),
+                [str(product_a["id"])],
+            )
+
+        create_response = self.client.get("/purchaseorder/create")
+        self.assertEqual(create_response.status_code, 200)
+        self.assertIn(b"Pedido Plantilla", create_response.data)
+
+        response = self.client.post(
+            "/purchaseorder/create",
+            data={
+                "owner_id": "Pharmacie Atlas",
+                "warehouse": "Principal",
+                "subject": "Pedido Plantilla",
+                "supplier_id": "Proveedor Plantilla",
+                "deadline": "06/11/2099",
+                "selected_product_id": [str(product_a["id"]), str(product_b["id"])],
+                f"product_quantity_{product_a['id']}": "3",
+                f"product_quantity_{product_b['id']}": "4",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        with self.app.app_context():
+            created_order = next(
+                row
+                for row in list_records("purchaseorders")
+                if row["subject"] == "Pedido Plantilla" and row["number"] != "109026"
+            )
+            created_lines = list_order_products(created_order["number"])
+        self.assertEqual(
+            [line["name"] for line in created_lines],
+            ["Medicamento Plantilla A"],
+        )
+
     def test_non_manager_cannot_open_manager_edit_mode(self):
         with self.app.app_context():
             append_records(
@@ -1725,6 +1946,15 @@ class AppTests(unittest.TestCase):
             )
             self.assertEqual(recap_workbook.sheetnames, ["Recapitulacion"])
             self.assertEqual(balance_workbook.sheetnames, ["Balance"])
+            recap_values = [
+                str(cell)
+                for row in recap_workbook["Recapitulacion"].iter_rows(values_only=True)
+                for cell in row
+                if cell is not None
+            ]
+            self.assertIn("TOTAL PPH INICIAL", recap_values)
+            self.assertIn("TOTAL PPH DESCONTADO", recap_values)
+            self.assertIn("GANANCIA ACUMULADA", recap_values)
             balance_values = [
                 str(cell)
                 for row in balance_workbook["Balance"].iter_rows(values_only=True)
@@ -1867,7 +2097,7 @@ class AppTests(unittest.TestCase):
         self.login()
         summary_response = self.client.get("/purchaseorder/edit/109012")
         self.assertIn(b"Productos acumulados", summary_response.data)
-        self.assertIn(b"Pharmacie Atlas", summary_response.data)
+        self.assertIn(b"Atlas", summary_response.data)
         self.assertIn(b"Producto Sara A", summary_response.data)
         self.assertNotIn(b"data-quantity-product-id", summary_response.data)
 
@@ -2322,10 +2552,12 @@ class AppTests(unittest.TestCase):
         self.login()
         response = self.client.get("/products")
         self.assertEqual(response.status_code, 200)
+        self.assertIn(b'id="products-table-search"', response.data)
+        self.assertIn(b'id="products-table-suggestions"', response.data)
+        self.assertIn(b"Sin coincidencias.", response.data)
         self.assertIn(f"Mostrando 1-25 de {total_products} registros".encode(), response.data)
         self.assertIn(b"Pagina 1 de 2", response.data)
         self.assertIn(b'href="/products?page=2"', response.data)
-        self.assertNotIn(b"Producto Pag 30", response.data)
 
         response = self.client.get("/products?page=2")
         self.assertEqual(response.status_code, 200)
