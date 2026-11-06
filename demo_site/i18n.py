@@ -427,6 +427,13 @@ def translate_html(html: str, language: str) -> str:
         r"Page \1 sur \2",
         translated,
     )
-    for index, attribute in enumerate(protected):
-        translated = translated.replace(f"__I18N_ATTRIBUTE_{index}__", attribute)
+    # Restore all protected attributes in one pass. Replacing each placeholder
+    # separately scans the complete HTML once per attribute; manager pages can
+    # contain thousands of inputs and otherwise exceed Gunicorn's timeout.
+    if protected:
+        translated = re.sub(
+            r"__I18N_ATTRIBUTE_(\d+)__",
+            lambda match: protected[int(match.group(1))],
+            translated,
+        )
     return translated
