@@ -192,6 +192,8 @@
                   <td>{{ row.get(key)|date_display }}</td>
                 {% elif table_key == "products" and key in ["ppv", "pph"] %}
                   <td>{{ row.get(key)|price2 }}</td>
+                {% elif table_key == "users" and key in ["pharmacy", "first_name", "last_name", "email", "password", "phone", "admin"] %}
+                  <td><span data-no-translate>{{ row.get(key) }}</span></td>
                 {% else %}
                   <td>{{ row.get(key) }}</td>
                 {% endif %}

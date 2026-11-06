@@ -412,7 +412,8 @@ def translate_html(html: str, language: str) -> str:
         return f"__I18N_ATTRIBUTE_{len(protected) - 1}__"
 
     # Keep explicitly marked user data unchanged. Database values such as
-    # pharmacy, supplier and product names must not be translated.
+    # Stored names and account data must not be translated. Only interface
+    # labels and messages belong to the translation layer.
     html = re.sub(
         r"<([A-Za-z][\w:-]*)\b[^>]*\bdata-no-translate(?:\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s>]+))?[^>]*>.*?</\1\s*>",
         protect_block,
