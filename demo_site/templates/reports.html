@@ -59,7 +59,7 @@
       <div class="report-opening-grid">
         {% for pharmacy in report_detail.pharmacies %}
           <label class="form-field">
-            <span>{{ pharmacy }}</span>
+            <span data-no-translate>{{ pharmacy }}</span>
             <input type="hidden" name="opening_pharmacy" value="{{ pharmacy }}">
             <input class="input" name="opening_balance" value="{{ opening_balances.get(pharmacy, '') }}" placeholder="0,00">
           </label>

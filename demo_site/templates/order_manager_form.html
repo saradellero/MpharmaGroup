@@ -153,7 +153,7 @@
       <label for="manager-pharmacy-select">Modificar una farmacia</label>
       <select class="input" id="manager-pharmacy-select" name="pharmacy">
         {% for pharmacy in manager_matrix.pharmacies %}
-          <option value="{{ pharmacy }}">{{ pharmacy }}</option>
+          <option value="{{ pharmacy }}" data-no-translate>{{ pharmacy }}</option>
         {% endfor %}
       </select>
       <button class="side-action side-action-button" type="submit">Modificar farmacia seleccionada</button>
@@ -163,7 +163,7 @@
       <label for="print-pharmacy-select">Imprimir una farmacia</label>
       <select class="input" id="print-pharmacy-select" name="pharmacy">
         {% for pharmacy in manager_matrix.pharmacies %}
-          <option value="{{ pharmacy }}">{{ pharmacy }}</option>
+          <option value="{{ pharmacy }}" data-no-translate>{{ pharmacy }}</option>
         {% endfor %}
       </select>
       <button class="side-action side-action-button" type="submit">Imprimir farmacia seleccionada</button>

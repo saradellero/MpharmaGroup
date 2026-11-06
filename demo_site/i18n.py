@@ -399,17 +399,31 @@ TRANSLATIONS = {
 def translate_html(html: str, language: str) -> str:
     if language != "fr":
         return html
+    protected_blocks: list[str] = []
     protected: list[str] = []
+
+    def protect_block(match: re.Match[str]) -> str:
+        protected_blocks.append(match.group(0))
+        return f"__I18N_BLOCK_{len(protected_blocks) - 1}__"
 
     def protect_attribute(match: re.Match[str]) -> str:
         protected.append(match.group(0))
         return f"__I18N_ATTRIBUTE_{len(protected) - 1}__"
 
+    # Keep explicitly marked user data unchanged. Database values such as
+    # pharmacy, supplier and product names must not be translated.
+    html = re.sub(
+        r"<([A-Za-z][\w:-]*)\b[^>]*\bdata-no-translate(?:\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s>]+))?[^>]*>.*?</\1\s*>",
+        protect_block,
+        html,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
     # Preserve submitted values, selectors, URLs and structural attributes while
     # translating visible labels and user-facing attributes such as placeholders,
     # titles and ARIA labels.
     html = re.sub(
-        r"\b(?:value|name|type|href|action|class|id|for|method|target|autocomplete|enctype|accept|pattern|min|max|step|src|rel|lang|role|tabindex|colspan|rowspan|data-[\w-]+)=(?:\"[^\"]*\"|'[^']*')",
+        r"\b(?:value|name|type|href|action|class|id|for|method|target|autocomplete|enctype|accept|pattern|min|max|step|src|rel|lang|role|tabindex|aria-label|colspan|rowspan|data-[\w-]+)=(?:\"[^\"]*\"|'[^']*')",
         protect_attribute,
         html,
     )
@@ -434,6 +448,12 @@ def translate_html(html: str, language: str) -> str:
         translated = re.sub(
             r"__I18N_ATTRIBUTE_(\d+)__",
             lambda match: protected[int(match.group(1))],
+            translated,
+        )
+    if protected_blocks:
+        translated = re.sub(
+            r"__I18N_BLOCK_(\d+)__",
+            lambda match: protected_blocks[int(match.group(1))],
             translated,
         )
     return translated

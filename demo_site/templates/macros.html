@@ -136,7 +136,7 @@
 {% macro pharmacy_header(name) -%}
   {% set clean_name = name|replace("Pharmacie ", "")|replace("PHARMACIE ", "")|trim %}
   <span class="pharmacy-column-header" aria-label="{{ clean_name }}">
-    {% for word in clean_name.split() %}<span>{{ word }}</span>{% endfor %}
+    {% for word in clean_name.split() %}<span data-no-translate>{{ word }}</span>{% endfor %}
   </span>
 {%- endmacro %}
 
