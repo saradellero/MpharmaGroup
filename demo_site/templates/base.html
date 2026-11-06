@@ -15,24 +15,24 @@
     <div class="profile-menu">
       <span class="avatar">{{ current_user.name[:1] }}</span>
       <span>{{ current_user.name }}</span>
-      <small class="group-context">{{ active_group.name }}</small>
+      <small class="group-context"><span data-no-translate>{{ active_group.name }}</span></small>
       <nav>
-        <a href="{{ url_for('profile') }}">Perfil</a>
-        <a href="{{ url_for('logout') }}">Salir</a>
+        <a href="{{ url_for('profile') }}">Profil</a>
+        <a href="{{ url_for('logout') }}">Déconnexion</a>
       </nav>
     </div>
   </header>
 
   <aside class="side-menu" id="menu">
     <nav class="side-menu__expanded">
-      <a class="menu-hint" href="#menu">Los modulos estan en los iconos laterales</a>
+      <a class="menu-hint" href="#menu">Les modules sont dans les icônes latérales</a>
       {% for item in nav_items %}
         <a class="{% if active == item.key %}selected{% endif %}" href="{{ url_for(item.endpoint) }}">
           {{ ui.icon(item.icon) }}<span>{{ item.label }}</span>
         </a>
       {% endfor %}
     </nav>
-    <nav class="side-menu__icons" aria-label="Navegacion compacta">
+    <nav class="side-menu__icons" aria-label="Navigation compacte">
       {% for item in nav_items %}
         <a class="{% if active == item.key %}selected{% endif %}" href="{{ url_for(item.endpoint) }}" title="{{ item.label }}">
           {{ ui.icon(item.icon) }}

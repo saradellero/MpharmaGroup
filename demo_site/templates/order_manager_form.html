@@ -2,46 +2,46 @@
 {% import "macros.html" as ui %}
 
 {% block content %}
-{{ ui.page_header("Pedido: " ~ order_id, "Edicion avanzada del gestor") }}
+{{ ui.page_header("Commande : " ~ order_id, "Édition avancée du gestionnaire") }}
 {% set new_product_values = new_product_values or {} %}
 <div class="order-detail-layout manager-order-layout">
   <form id="manager-order-form" method="post" action="{{ url_for('purchaseorder_edit', order_id=order_id, mode='manager') }}" class="order-detail-main">
     <section class="block form-grid">
-      <h2 class="form-section">Datos del pedido</h2>
+      <h2 class="form-section">Détails de la commande</h2>
       <label class="form-field">
-        <span>Gestor / farmacia</span>
+        <span>Gestionnaire / pharmacie</span>
         <select class="input" name="owner_id">
           {% for option in manager_options %}
             <option value="{{ option.value }}" {% if option.value == order.owner_id %}selected{% endif %}>{{ option.label }}</option>
           {% endfor %}
         </select>
       </label>
-      {{ ui.select_field("warehouse", "Almacen", ["Principal", "Secundario"], order.warehouse) }}
-      {{ ui.input_field("subject", "Objeto", order.subject) }}
-      {{ ui.date_field("deadline", "Fecha limite", order.deadline) }}
+      {{ ui.select_field("warehouse", "Entrepôt", ["Principal", "Secondaire"], order.warehouse) }}
+      {{ ui.input_field("subject", "Objet", order.subject) }}
+      {{ ui.date_field("deadline", "Date limite", order.deadline) }}
       <label class="form-field">
-        <span>Proveedor</span>
+        <span>Fournisseur</span>
         <input class="input" name="supplier_id" value="{{ order.supplier }}" autocomplete="off">
       </label>
-      {{ ui.input_field("contact_id", "Contacto", order.contact) }}
+      {{ ui.input_field("contact_id", "Contact", order.contact) }}
       <label class="form-field form-field-wide">
-        <span>Condiciones</span>
+        <span>Conditions</span>
         <textarea class="input textarea" name="terms_and_conditions">{{ order.terms_and_conditions }}</textarea>
       </label>
     </section>
 
     <section class="block form-grid">
-      <h2 class="form-section">Pago y entrega</h2>
-      {{ ui.input_field("payment_timeframe", "Plazo de pago", order.payment_timeframe) }}
-      {{ ui.input_field("delivery_timeframe", "Plazo de entrega", order.delivery_timeframe) }}
-      {{ ui.input_field("delivery_transporter", "Transportista", order.delivery_transporter) }}
+      <h2 class="form-section">Paiement et livraison</h2>
+      {{ ui.input_field("payment_timeframe", "Délai de paiement", order.payment_timeframe) }}
+      {{ ui.input_field("delivery_timeframe", "Délai de livraison", order.delivery_timeframe) }}
+      {{ ui.input_field("delivery_transporter", "Transporteur", order.delivery_transporter) }}
       <label class="form-field">
-        <span>Estado del pedido</span>
+        <span>Statut de la commande</span>
         <select class="input" name="order_status">
-          <option value="Abierto"{% if order.status != "Cerrado" %} selected{% endif %}>Abierto</option>
-          <option value="Cerrado"{% if order.status == "Cerrado" %} selected{% endif %}>Cerrado</option>
+          <option value="Abierto"{% if order.status != "Cerrado" %} selected{% endif %}>Ouvert</option>
+          <option value="Cerrado"{% if order.status == "Cerrado" %} selected{% endif %}>Fermé</option>
         </select>
-        <small class="bulk-upload__hint">Al cerrarlo se bloqueara la edicion, se archivara y se notificara a los miembros.</small>
+        <small class="bulk-upload__hint">À sa clôture, la modification sera verrouillée, la commande sera archivée et les membres en seront informés.</small>
       </label>
       <div class="payment-methods">
         {% for method in ["cash", "check", "debit_card", "bill_of_exchange", "other"] %}
@@ -51,17 +51,17 @@
     </section>
 
     <section class="block">
-      <h2>Productos del proveedor y cantidades</h2>
-      <p class="bulk-upload__hint">Se muestran todos los productos del proveedor seleccionado. El gestor puede actualizar PPV, PPH, IVA y las cantidades por farmacia antes de guardar.</p>
+      <h2>Produits du fournisseur et quantités</h2>
+      <p class="bulk-upload__hint">Tous les produits du fournisseur sélectionné sont affichés. Le gestionnaire peut mettre à jour le PPV, le PPH, la TVA et les quantités par pharmacie avant l'enregistrement.</p>
       <div class="table-wrap">
           <table class="data-table editable-table manager-summary-table">
           <thead>
             <tr>
-              <th>Selección</th>
-              <th>Producto</th>
+              <th>Sélection</th>
+              <th>Produit</th>
               <th>PPV</th>
               <th>PPH</th>
-              <th>IVA</th>
+              <th>TVA</th>
               {% for pharmacy in manager_matrix.pharmacies %}
                 <th class="pharmacy-header-cell pharmacy-column-{{ loop.index0 % 2 }}">{{ ui.pharmacy_header(pharmacy) }}</th>
               {% endfor %}
@@ -73,7 +73,7 @@
               {% set row_index = loop.index0 %}
               <tr>
                 <td class="row-select-cell">
-                  <input class="row-select-checkbox" type="checkbox" name="manager_selected_product_id" value="{{ row.id }}" {% if row.selected %}checked{% endif %} aria-label="Mostrar {{ row.name }} a las farmacias">
+                  <input class="row-select-checkbox" type="checkbox" name="manager_selected_product_id" value="{{ row.id }}" {% if row.selected %}checked{% endif %} aria-label="Afficher {{ row.name }} aux pharmacies">
                 </td>
                 <td>
                   <strong>{{ row.name }}</strong>
@@ -101,24 +101,24 @@
                 <td class="manager-row-total" id="manager-row-total-{{ row_index }}">{{ row.total_quantity|default("0") }}</td>
               </tr>
             {% else %}
-              <tr><td colspan="{{ manager_matrix.pharmacies|length + 6 }}" class="empty">No hay productos disponibles para el proveedor seleccionado.</td></tr>
+              <tr><td colspan="{{ manager_matrix.pharmacies|length + 6 }}" class="empty">Aucun produit disponible pour le fournisseur sélectionné.</td></tr>
             {% endfor %}
             <tr class="new-row manager-new-product-row">
               <td class="row-select-cell"></td>
               <td class="manager-new-product-fields">
-                <strong>Nueva linea de producto</strong>
+                <strong>Nouvelle ligne de produit</strong>
                 <div class="manager-new-product-autocomplete">
                   <input class="input" id="manager-new-product-name" name="new_product_name" placeholder="Escribe el nombre del medicamento" value="{{ new_product_values.get('name', '') }}" autocomplete="off">
                   <input type="hidden" id="manager-new-product-id" name="new_product_id" value="{{ new_product_values.get('product_id', '') }}">
                   <div class="autocomplete-list" id="manager-new-product-suggestions" hidden></div>
                 </div>
-                <input class="input" name="new_product_barcode" placeholder="Codigo opcional" value="{{ new_product_values.get('barcode', '') }}">
+                <input class="input" name="new_product_barcode" placeholder="Code facultatif" value="{{ new_product_values.get('barcode', '') }}">
               </td>
-              <td><input class="input manager-price-input" name="new_product_ppv" placeholder="PPV obligatorio" value="{{ new_product_values.get('ppv', '')|price2 }}"></td>
-              <td><input class="input manager-price-input" name="new_product_pph" placeholder="PPH obligatorio" value="{{ new_product_values.get('pph', '')|price2 }}"></td>
+              <td><input class="input manager-price-input" name="new_product_ppv" placeholder="PPV obligatoire" value="{{ new_product_values.get('ppv', '')|price2 }}"></td>
+              <td><input class="input manager-price-input" name="new_product_pph" placeholder="PPH obligatoire" value="{{ new_product_values.get('pph', '')|price2 }}"></td>
               <td>
                 <select class="input manager-price-input manager-tax-input" name="new_product_tax">
-                  <option value="">IVA obligatorio</option>
+                  <option value="">TVA obligatoire</option>
                   {% for tax_option in ["0%", "7%", "10%", "20%"] %}
                     <option value="{{ tax_option }}"{% if new_product_values.get('tax', '') == tax_option %} selected{% endif %}>{{ tax_option }}</option>
                   {% endfor %}
@@ -134,42 +134,42 @@
           </tbody>
           </table>
       </div>
-      <p class="bulk-upload__hint">Marca los productos que podrán ver y rellenar las farmacias. Para guardar una nueva línea son obligatorios Producto, PPV, PPH e IVA. Las cantidades son opcionales y empiezan en 0.</p>
+      <p class="bulk-upload__hint">Cochez les produits que les pharmacies pourront voir et renseigner. Pour enregistrer une nouvelle ligne, Produit, PPV, PPH et TVA sont obligatoires. Les quantités sont facultatives et commencent à 0.</p>
       <div class="form-actions">
-        <a class="btn btn-white" href="{{ url_for('purchaseorder_edit', order_id=order_id) }}">Cancelar</a>
-        <button class="btn btn-blue" type="submit">Guardar como gestor</button>
+        <a class="btn btn-white" href="{{ url_for('purchaseorder_edit', order_id=order_id) }}">Annuler</a>
+        <button class="btn btn-blue" type="submit">Enregistrer en tant que gestionnaire</button>
       </div>
     </section>
   </form>
 
   <aside class="order-side-panel manager-options-panel">
-    <h2>Opciones de gestor</h2>
-    <a class="side-action" href="{{ url_for('purchaseorder_edit', order_id=order_id) }}">Ver resumen</a>
-    <a class="side-action" href="{{ url_for('purchaseorder_invoices', order_id=order_id) }}">Descuentos</a>
-    <a class="side-action" href="{{ url_for('purchaseorder_recap', order_id=order_id) }}">Recapitulacion</a>
-    <a class="side-action" href="{{ url_for('purchaseorder_print', order_id=order_id, scope='all') }}" target="_blank">Imprimir pedido total</a>
+    <h2>Options du gestionnaire</h2>
+    <a class="side-action" href="{{ url_for('purchaseorder_edit', order_id=order_id) }}">Voir le récapitulatif</a>
+    <a class="side-action" href="{{ url_for('purchaseorder_invoices', order_id=order_id) }}">Remises</a>
+    <a class="side-action" href="{{ url_for('purchaseorder_recap', order_id=order_id) }}">Récapitulatif</a>
+    <a class="side-action" href="{{ url_for('purchaseorder_print', order_id=order_id, scope='all') }}" target="_blank">Imprimer la commande globale</a>
     <form class="manager-side-form" method="get" action="{{ url_for('purchaseorder_edit', order_id=order_id) }}">
       <input type="hidden" name="mode" value="manager_pharmacy">
-      <label for="manager-pharmacy-select">Modificar una farmacia</label>
+      <label for="manager-pharmacy-select">Modifier une pharmacie</label>
       <select class="input" id="manager-pharmacy-select" name="pharmacy">
         {% for pharmacy in manager_matrix.pharmacies %}
           <option value="{{ pharmacy }}" data-no-translate>{{ pharmacy }}</option>
         {% endfor %}
       </select>
-      <button class="side-action side-action-button" type="submit">Modificar farmacia seleccionada</button>
+      <button class="side-action side-action-button" type="submit">Modifier la pharmacie sélectionnée</button>
     </form>
     <form class="manager-side-form" method="get" action="{{ url_for('purchaseorder_print', order_id=order_id) }}" target="_blank">
       <input type="hidden" name="scope" value="pharmacy">
-      <label for="print-pharmacy-select">Imprimir una farmacia</label>
+      <label for="print-pharmacy-select">Imprimer pour une pharmacie</label>
       <select class="input" id="print-pharmacy-select" name="pharmacy">
         {% for pharmacy in manager_matrix.pharmacies %}
           <option value="{{ pharmacy }}" data-no-translate>{{ pharmacy }}</option>
         {% endfor %}
       </select>
-      <button class="side-action side-action-button" type="submit">Imprimir farmacia seleccionada</button>
+      <button class="side-action side-action-button" type="submit">Imprimer pour la pharmacie sélectionnée</button>
     </form>
-    <p>Este modo permite modificar cantidades de todas las farmacias, los datos del pedido y las condiciones de pago y entrega.</p>
-    <button class="btn btn-blue side-submit" type="submit" form="manager-order-form">Guardar como gestor</button>
+    <p>Ce mode permet de modifier les quantités de toutes les pharmacies, les données de la commande ainsi que les conditions de paiement et de livraison.</p>
+    <button class="btn btn-blue side-submit" type="submit" form="manager-order-form">Enregistrer en tant que gestionnaire</button>
   </aside>
 </div>
 <script>
@@ -241,7 +241,7 @@
 
       suggestions.hidden = false;
       if (!matches.length) {
-        suggestions.innerHTML = '<div class="autocomplete-empty">Sin coincidencias en los productos creados.</div>';
+        suggestions.innerHTML = '<div class="autocomplete-empty">Aucune correspondance parmi les produits créés.</div>';
         return;
       }
 
@@ -251,10 +251,10 @@
         option.className = "autocomplete-option";
         option.innerHTML =
           "<strong>" + escapeHtml(product.name) + "</strong>" +
-          "<span>Proveedor: " + escapeHtml(product.supplier) +
+          "<span>Fournisseur : " + escapeHtml(product.supplier) +
           " · PPV " + escapeHtml(product.ppv) +
           " · PPH " + escapeHtml(product.pph) +
-          " · IVA " + escapeHtml(product.tax) + "</span>";
+          " · TVA " + escapeHtml(product.tax) + "</span>";
         option.addEventListener("click", function () {
           nameInput.value = product.name;
           productIdInput.value = product.id;

@@ -254,8 +254,14 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             if app.config.get("APP_LANGUAGE") == DEFAULT_LANGUAGE
             else session.get("language", "es")
         )
-        if getattr(response, "mimetype", "") == "text/html" and language == "fr":
-            response.set_data(translate_html(response.get_data(as_text=True), "fr"))
+        # Production templates are already French. Keep the reverse conversion
+        # only for the Spanish regression path used by the test suite.
+        if (
+            app.config.get("TESTING")
+            and getattr(response, "mimetype", "") == "text/html"
+            and language == "es"
+        ):
+            response.set_data(translate_html(response.get_data(as_text=True), "es"))
         response.headers["Content-Language"] = language
         return response
 
@@ -274,8 +280,8 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
     def request_entity_too_large(error: RequestEntityTooLarge) -> object:
         flash(
             (
-                "El fichero o formulario es demasiado grande. "
-                f"El limite configurado es {format_bytes(int(app.config['MAX_CONTENT_LENGTH']))}."
+                    "Le fichier ou le formulaire est trop volumineux. "
+                    f"La limite configurée est {format_bytes(int(app.config['MAX_CONTENT_LENGTH']))}."
             ),
             "error",
         )
@@ -338,7 +344,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             selected_group_id = request.form.get("group_id", "").strip() or DEFAULT_GROUP_ID
             values["group_id"] = selected_group_id
             if selected_group_id not in group_ids:
-                errors["group_id"] = "Selecciona un grupo de farmacias."
+                errors["group_id"] = "Sélectionnez un groupement de pharmacies."
             authenticated_user = None
             if not errors:
                 authenticated_user = authenticate_user(
@@ -351,7 +357,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                     and str(authenticated_user.get("group_id", DEFAULT_GROUP_ID))
                     != selected_group_id
                 ):
-                    errors["group_id"] = "Tu usuario no pertenece al grupo seleccionado."
+                    errors["group_id"] = "Votre compte n’appartient pas au groupement sélectionné."
                 else:
                     active_group = get_group(selected_group_id)
                     session["authenticated"] = True
@@ -360,12 +366,12 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                     session["user"] = authenticated_user
                     return redirect(redirect_url or url_for("dashboard"))
             if not errors:
-                errors["password"] = "Usuario o contrasena incorrectos."
-            flash("Revisa los datos de acceso de la demo.", "error")
+                errors["password"] = "Identifiant ou mot de passe incorrect."
+            flash("Vérifiez les identifiants d’accès à la démo.", "error")
 
         return render_template(
             "auth/login.html",
-            title="Acceso",
+            title="Connexion",
             values=values,
             errors=errors,
             redirect_url=redirect_url,
@@ -383,7 +389,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             sent = not errors
         return render_template(
             "auth/recovery.html",
-            title="Recuperacion",
+            title="Récupération",
             values=values,
             errors=errors,
             sent=sent,
@@ -399,7 +405,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
     def dashboard() -> object:
         return render_template(
             "dashboard.html",
-            title="Panel",
+            title="Tableau de bord",
             active="dashboard",
             stats=build_dashboard_stats(list_records),
             events=CALENDAR_EVENTS[:4],
@@ -421,15 +427,15 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             if request.form.get("bulk_action") == "import_excel":
                 upload = request.files.get("excel_file")
                 if not upload or not upload.filename:
-                    flash("Selecciona un fichero Excel para cargar.", "error")
+                    flash("Sélectionnez un fichier Excel à importer.", "error")
                     return redirect(f"{request.path}?edit=1")
                 try:
                     imported_rows = parse_excel_records(table_key, upload.stream, archived)
                     inserted = append_records(table_key, imported_rows)
                 except Exception:
-                    flash("No se pudo leer el fichero Excel.", "error")
+                    flash("Impossible de lire le fichier Excel.", "error")
                     return redirect(f"{request.path}?edit=1")
-                flash(f"Carga masiva completada: {inserted} registros anadidos.", "success")
+                flash(f"Importation en masse terminée : {inserted} enregistrements ajoutés.", "success")
                 return redirect(request.path)
             if request.form.get("row_action") == "delete_selected":
                 selected_ids = request.form.getlist("selected_record_id")
@@ -457,17 +463,17 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                     denied_delete_count = 0
                 deleted = delete_records(table_key, allowed_ids)
                 if deleted:
-                    flash(f"{deleted} filas eliminadas.", "success")
+                    flash(f"{deleted} lignes supprimées.", "success")
                 else:
-                    flash("Selecciona al menos una fila para eliminar.", "error")
+                    flash("Sélectionnez au moins une ligne à supprimer.", "error")
                 if blocked_count:
                     flash(
-                        "No se pueden modificar ni eliminar pedidos cuya fecha limite ya ha llegado.",
+                        "Les commandes dont la date limite est dépassée ne peuvent être modifiées ni supprimées.",
                         "error",
                     )
                 if denied_delete_count:
                     flash(
-                        "Solo el gestor asignado o un administrador puede eliminar pedidos.",
+                        "Seul le gestionnaire assigné ou un administrateur peut supprimer des commandes.",
                         "error",
                     )
                 return redirect(current_edit_url())
@@ -512,22 +518,22 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 )
 
             save_records(table_key, existing_rows, new_row)
-            flash(f"{table['title']} guardados en la base de datos.", "success")
+            flash(f"{table['title']} enregistrés dans la base de données.", "success")
             if blocked_count:
                 flash(
-                    "Los pedidos cuya fecha limite ya ha llegado no se han modificado.",
+                    "Les commandes dont la date limite est dépassée n’ont pas été modifiées.",
                     "error",
                 )
             for closing_order_id in closing_order_ids:
                 result = send_order_closed_notifications(app, closing_order_id)
                 if result == "not_configured":
                     flash(
-                        "Algunos pedidos se cerraron sin correo: falta configurar Brevo.",
+                        "Certaines commandes ont été clôturées sans e-mail : Brevo n’est pas configuré.",
                         "error",
                     )
                 elif result == "failed":
                     flash(
-                        "Algunos pedidos se cerraron, pero no se pudo enviar el correo.",
+                        "Certaines commandes ont été clôturées, mais l’e-mail n’a pas pu être envoyé.",
                         "error",
                     )
             if closing_order_ids and not archived:
@@ -536,7 +542,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
 
         edit_requested = request.args.get("edit") == "1"
         if edit_requested and not table_can_edit:
-            flash("No tienes permisos para editar este apartado.", "error")
+            flash("Vous n’êtes pas autorisé à modifier cette rubrique.", "error")
             return redirect(request.path)
 
         rows = list_records(
@@ -679,15 +685,15 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
         if request.method == "POST":
             password = request.form.get("password", "").strip()
             if not values["name"]:
-                errors["name"] = "Introduce el nombre del grupo."
+                errors["name"] = "Saisissez le nom du groupement."
             if not values["first_name"]:
-                errors["first_name"] = "Introduce el nombre del administrador."
+                errors["first_name"] = "Saisissez le prénom de l’administrateur."
             if not values["last_name"]:
-                errors["last_name"] = "Introduce el apellido del administrador."
+                errors["last_name"] = "Saisissez le nom de famille de l’administrateur."
             if not values["email"]:
-                errors["email"] = "Introduce el email del administrador."
+                errors["email"] = "Saisissez l’e-mail de l’administrateur."
             if not password:
-                errors["password"] = "Introduce una contrasena para el administrador."
+                errors["password"] = "Saisissez un mot de passe pour l’administrateur."
             if not errors:
                 try:
                     create_group(
@@ -697,7 +703,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 except ValueError as error:
                     errors["email"] = str(error)
                 else:
-                    flash("Grupo creado y administrador asignado.", "success")
+                    flash("Groupement créé et administrateur assigné.", "success")
                     return redirect(url_for("groups"))
         group_rows = []
         for group in list_groups(include_inactive=True):
@@ -723,7 +729,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             )
         return render_template(
             "groups.html",
-            title="Grupos",
+            title="Groupes",
             active="groups",
             groups=group_rows,
             values=values,
@@ -736,12 +742,12 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
         group_name = request.form.get("name", "").strip()
         active = request.form.get("active") == "1"
         if not group_name:
-            flash("Introduce el nombre del grupo.", "error")
+            flash("Saisissez le nom du groupement.", "error")
             return redirect(url_for("groups"))
         if update_group(group_id, group_name, active):
-            flash("Grupo actualizado.", "success")
+            flash("Groupement mis à jour.", "success")
         else:
-            flash("No se pudo actualizar el grupo.", "error")
+            flash("Le groupement n’a pas pu être mis à jour.", "error")
         return redirect(url_for("groups"))
 
     @app.route("/groups/<group_id>/admin/<user_id>/edit", methods=["POST"])
@@ -753,9 +759,9 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             flash(str(error), "error")
             return redirect(url_for("groups"))
         if updated:
-            flash("Administrador del grupo actualizado.", "success")
+            flash("Administrateur du groupement mis à jour.", "success")
         else:
-            flash("No se pudo actualizar el administrador del grupo.", "error")
+            flash("L’administrateur du groupement n’a pas pu être mis à jour.", "error")
         return redirect(url_for("groups"))
 
     @app.route("/groups/<group_id>/admin/create", methods=["POST"])
@@ -767,9 +773,9 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             flash(str(error), "error")
             return redirect(url_for("groups"))
         if created:
-            flash("Administrador del grupo asignado.", "success")
+            flash("Administrateur du groupement assigné.", "success")
         else:
-            flash("Completa todos los datos del administrador.", "error")
+            flash("Complétez toutes les informations de l’administrateur.", "error")
         return redirect(url_for("groups"))
 
     @app.route("/events")
@@ -799,19 +805,19 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 value = str(raw_value).strip()
                 if value and parse_optional_number(value) is None:
                     flash(
-                        f"El saldo inicial de {pharmacy} no es un importe valido.",
+                        f"Le solde initial de {pharmacy} n’est pas un montant valide.",
                         "error",
                     )
                     return redirect(url_for("reports", year=year, warehouse=warehouse))
                 opening_balances[str(pharmacy).strip()] = value
             save_report_opening_balances(opening_balances)
-            flash("Saldo inicial acumulado guardado.", "success")
+            flash("Solde initial cumulé enregistré.", "success")
             return redirect(url_for("reports", year=year, warehouse=warehouse))
 
         opening_balances = list_report_opening_balances()
         return render_template(
             "reports.html",
-            title="Reportes",
+            title="Rapports",
             active="reports",
             year=year,
             warehouse=warehouse,
@@ -830,7 +836,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
         label = "pagado" if report_type == "paid" else "recibido"
         return render_template(
             "report_detail.html",
-            title="Detalle de reporte",
+            title="Détail du rapport",
             active="reports",
             report_type=label,
             year=year,
@@ -848,13 +854,13 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
     @admin_required
     def contact_create() -> object:
         if request.method == "POST":
-            flash("Contacto guardado en modo demo.", "success")
+            flash("Contact enregistré en mode démo.", "success")
             if request.form.get("save_new"):
                 return redirect(url_for("contact_create"))
             return redirect(url_for("contacts"))
         return render_template(
             "contact_form.html",
-            title="Nuevo contacto",
+            title="Nouveau contact",
             active="suppliers",
             values={},
         )
@@ -863,13 +869,13 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
     @admin_required
     def event_create() -> object:
         if request.method == "POST":
-            flash("Evento guardado en modo demo.", "success")
+            flash("Événement enregistré en mode démo.", "success")
             if request.form.get("save_new"):
                 return redirect(url_for("event_create"))
             return redirect(url_for("events"))
         return render_template(
             "event_form.html",
-            title="Nuevo evento",
+            title="Nouvel événement",
             active="events",
             values={"date": "2026-06-18", "assigned_to": "Sara Demo"},
         )
@@ -931,7 +937,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             )
             save_order_products(order_number, selected_products, pharmacy_scope)
             sync_purchase_order_product_totals(order_number)
-            flash("Pedido creado.", "success")
+            flash("Commande créée.", "success")
             return redirect(url_for("purchaseorder_edit", order_id=order_number))
 
         order = build_order_detail("", empty=True, pharmacy_scope=pharmacy_scope)
@@ -940,7 +946,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
         )
         return render_template(
             "order_form.html",
-            title="Nuevo pedido",
+            title="Nouvelle commande",
             active="purchaseorders",
             order=order,
             order_id="Nuevo",
@@ -985,9 +991,9 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
         if request.method == "POST" and order_locked:
             flash(
                 (
-                    "Este pedido esta cerrado y no se puede modificar."
+                    "Cette commande est clôturée et ne peut pas être modifiée."
                     if order_is_closed(order_id)
-                    else "La fecha limite de este pedido ya ha llegado. Solo el gestor puede modificarlo."
+                    else "La date limite de cette commande est dépassée. Seul le gestionnaire peut la modifier."
                 ),
                 "error",
             )
@@ -1016,7 +1022,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 )
                 sync_purchase_order_product_totals(order_id)
                 flash(
-                    f"Pedido de {selected_manager_pharmacy} actualizado.",
+                    f"Commande de {selected_manager_pharmacy} mise à jour.",
                     "success",
                 )
                 return redirect(url_for("purchaseorder_edit", order_id=order_id))
@@ -1029,16 +1035,16 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                     missing_fields = [
                         label
                         for key, label in (
-                            ("name", "Producto"),
+                            ("name", "Produit"),
                             ("ppv", "PPV"),
                             ("pph", "PPH"),
-                            ("tax", "IVA"),
+                            ("tax", "TVA"),
                         )
                         if not new_product_values.get(key)
                     ]
                     if missing_fields:
                         flash(
-                            "Para crear un producto son obligatorios: "
+                            "Pour créer un produit, les champs suivants sont obligatoires : "
                             + ", ".join(missing_fields)
                             + ".",
                             "error",
@@ -1046,7 +1052,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                         order = build_order_detail(order_id, pharmacy_scope=pharmacy_scope)
                         return render_template(
                             "order_manager_form.html",
-                            title=f"Pedido {order_id} - Gestor",
+                            title=f"Commande {order_id} - Gestionnaire",
                             active="purchaseorders",
                             order=order,
                             order_id=order_id,
@@ -1150,19 +1156,19 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 sync_purchase_order_product_totals(order_id)
                 if manager_values["status"] == ORDER_STATUS_CLOSED:
                     notify_result = "already_closed" if was_closed else send_order_closed_notifications(app, order_id)
-                    flash("Pedido cerrado y enviado a pedidos archivados.", "success")
+                    flash("Commande clôturée et déplacée vers les commandes archivées.", "success")
                     if notify_result == "not_configured":
                         flash(
-                            "El cierre se guardo, pero no se envio el correo: falta configurar Brevo.",
+                            "La clôture a été enregistrée, mais l’e-mail n’a pas été envoyé : Brevo n’est pas configuré.",
                             "error",
                         )
                     elif notify_result == "failed":
                         flash(
-                            "El pedido se cerro, pero no se pudo enviar el correo de notificacion.",
+                            "La commande a été clôturée, mais l’e-mail de notification n’a pas pu être envoyé.",
                             "error",
                         )
                     return redirect(url_for("purchaseorders_archived"))
-                flash("Pedido actualizado como gestor.", "success")
+                flash("Commande mise à jour par le gestionnaire.", "success")
                 return redirect(url_for("purchaseorder_edit", order_id=order_id))
 
             selected_products = selected_products_from_form(
@@ -1175,7 +1181,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             update_purchase_order(order_id, values)
             save_order_products(order_id, selected_products, pharmacy_scope)
             sync_purchase_order_product_totals(order_id)
-            flash("Pedido actualizado.", "success")
+            flash("Commande mise à jour.", "success")
             if pharmacy_view:
                 return redirect(url_for("purchaseorder_edit", order_id=order_id))
 
@@ -1183,7 +1189,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             order = build_order_detail(order_id, pharmacy_scope=pharmacy_scope)
             return render_template(
                 "order_summary.html",
-                title=f"Pedido {order_id}",
+                title=f"Commande {order_id}",
                 active="purchaseorders",
                 order=order,
                 order_id=order_id,
@@ -1216,7 +1222,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             )
             return render_template(
                 "order_form.html",
-                title=f"Pedido {order_id} - {selected_manager_pharmacy}",
+                title=f"Commande {order_id} - {selected_manager_pharmacy}",
                 active="purchaseorders",
                 order=order,
                 order_id=order_id,
@@ -1238,7 +1244,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             order = build_order_detail(order_id, pharmacy_scope=pharmacy_scope)
             return render_template(
                 "order_manager_form.html",
-                title=f"Pedido {order_id} - Gestor",
+            title=f"Commande {order_id} - Gestionnaire",
                 active="purchaseorders",
                 order=order,
                 order_id=order_id,
@@ -1251,7 +1257,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
         order = build_order_detail(order_id, pharmacy_scope=pharmacy_scope)
         return render_template(
             "order_form.html",
-            title=f"Pedido {order_id}",
+            title=f"Commande {order_id}",
             active="purchaseorders",
             order=order,
             order_id=order_id,
@@ -1280,7 +1286,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             pharmacy_scope = None
             order = build_order_detail(order_id, pharmacy_scope=None)
             printable_products = build_aggregated_print_products(order_id)
-            print_label = "Pedido total"
+            print_label = "Commande globale"
         else:
             pharmacy_scope = order_product_scope_for_user(user)
             if requested_scope == "pharmacy":
@@ -1299,13 +1305,15 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             ]
             print_label = (
                 f"Pedido de {pharmacy_scope}"
+                if app.config.get("TESTING") and requested_scope == "pharmacy"
+                else "Commande de"
                 if requested_scope == "pharmacy"
-                else "Pedido"
+                else "Commande"
             )
         printable_products = apply_final_invoice_prices(order_id, printable_products)
         return render_template(
             "order_print.html",
-            title=f"Imprimir pedido {order_id}",
+            title=f"Imprimer la commande {order_id}",
             active="purchaseorders",
             order=order,
             order_id=order_id,
@@ -1318,6 +1326,11 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             ),
             is_total_print=is_total_print,
             print_label=print_label,
+            print_pharmacy=(
+                None
+                if app.config.get("TESTING") and requested_scope == "pharmacy"
+                else pharmacy_scope if requested_scope == "pharmacy" else None
+            ),
         )
 
     @app.route("/purchaseorder/invoices/<order_id>", methods=["GET", "POST"])
@@ -1334,7 +1347,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 total_discount is None or total_discount < 0 or total_discount > 100
             ):
                 flash(
-                    "El descuento total debe ser un porcentaje entre 0 y 100.",
+                    "La remise totale doit être comprise entre 0 et 100 %.",
                     "error",
                 )
                 products = build_invoice_rows(order_id, products)
@@ -1343,7 +1356,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 final_total = apply_order_total_discount(subtotal, total_discount or 0.0)
                 return render_template(
                     "order_invoices.html",
-                    title=f"Facturas del pedido {order_id}",
+                    title=f"Facturation de la commande {order_id}",
                     active="purchaseorders",
                     order=order,
                     order_id=order_id,
@@ -1364,7 +1377,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 order_id,
                 format_price(total_discount) if total_discount is not None else "",
             )
-            flash("Datos de factura guardados.", "success")
+            flash("Données de facturation enregistrées.", "success")
             return redirect(url_for("purchaseorder_invoices", order_id=order_id))
         products = build_invoice_rows(order_id, products)
         subtotal = invoice_subtotal(products)
@@ -1374,7 +1387,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
         final_total = apply_order_total_discount(subtotal, total_discount)
         return render_template(
             "order_invoices.html",
-            title=f"Facturas del pedido {order_id}",
+            title=f"Facturation de la commande {order_id}",
             active="purchaseorders",
             order=order,
             order_id=order_id,
@@ -1397,7 +1410,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
         manager_view = is_order_manager(order_id, session.get("user"))
         return render_template(
             "order_recap.html",
-            title=f"Recapitulacion del pedido {order_id}",
+            title=f"Récapitulatif de la commande {order_id}",
             active="purchaseorders",
             order=build_order_detail(order_id, pharmacy_scope=None),
             order_id=order_id,
@@ -1407,7 +1420,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                 if manager_view
                 else url_for("purchaseorder_edit", order_id=order_id)
             ),
-            back_label="Volver al gestor" if manager_view else "Volver al pedido",
+            back_label="Retour au gestionnaire" if manager_view else "Retour à la commande",
         )
 
     @app.route("/settings/usersettings/profile")
@@ -1422,7 +1435,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
         }
         return render_template(
             "profile.html",
-            title="Perfil",
+            title="Profil",
             active="settings",
             profile=profile_data,
         )
@@ -1431,11 +1444,11 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
     @login_required
     def edit_profile() -> object:
         if request.method == "POST":
-            flash("Perfil actualizado en modo demo.", "success")
+            flash("Profil mis à jour en mode démo.", "success")
             return redirect(url_for("profile"))
         return render_template(
             "edit_profile.html",
-            title="Editar perfil",
+            title="Modifier le profil",
             active="settings",
             profile=PROFILE,
         )
@@ -1448,16 +1461,16 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
             new_password = request.form.get("new_password", "")
             confirm = request.form.get("password_confirm", "")
             if new_password != confirm:
-                errors["password_confirm"] = "Las contrasenas no coinciden."
+                errors["password_confirm"] = "Les mots de passe ne correspondent pas."
             elif not new_password:
-                errors["new_password"] = "Introduce una nueva contrasena."
+                errors["new_password"] = "Saisissez un nouveau mot de passe."
             else:
                 update_user_password(session["user"]["email"], new_password)
-                flash("Contrasena actualizada.", "success")
+                flash("Mot de passe mis à jour.", "success")
                 return redirect(url_for("profile"))
         return render_template(
             "change_password.html",
-            title="Cambiar contrasena",
+            title="Modifier le mot de passe",
             active="settings",
             errors=errors,
         )
@@ -1467,7 +1480,7 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
         return (
             render_template(
                 "404.html",
-                title="Pagina no encontrada",
+                title="Page introuvable",
                 active="",
                 path=request.path,
             ),

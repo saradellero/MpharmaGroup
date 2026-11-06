@@ -2,33 +2,33 @@
 {% import "macros.html" as ui %}
 
 {% block content %}
-{{ ui.page_header("Reportes", "Balances y estadisticas de pedidos") }}
+{{ ui.page_header("Rapports", "Soldes et statistiques des commandes") }}
 
 <section class="block report-filters">
   <form method="get" class="inline-form">
-    <label>Ejercicio
+    <label>Exercice
       <select class="input" name="year">
         {% for option in ["2024", "2025", "2026"] %}
           <option value="{{ option }}" {% if option == year %}selected{% endif %}>{{ option }}</option>
         {% endfor %}
       </select>
     </label>
-    <label>Almacen
+    <label>Entrepôt
       <select class="input" name="warehouse">
-        <option value="" {% if not warehouse %}selected{% endif %}>Todos</option>
+        <option value="" {% if not warehouse %}selected{% endif %}>Tous</option>
         <option value="Principal" {% if warehouse == "Principal" %}selected{% endif %}>Principal</option>
-        <option value="Secundario" {% if warehouse == "Secundario" %}selected{% endif %}>Secundario</option>
+        <option value="Secundario" {% if warehouse == "Secundario" %}selected{% endif %}>Secondaire</option>
       </select>
     </label>
-    <button class="btn btn-blue" type="submit">Aplicar</button>
+    <button class="btn btn-blue" type="submit">Appliquer</button>
   </form>
 </section>
 
 <section class="block">
-  <h2>Balance por farmacia para {{ year }}</h2>
+  <h2>Solde par pharmacie pour {{ year }}</h2>
   <div class="table-wrap">
     <table class="data-table">
-      <thead><tr><th>Farmacia</th><th>Total soportado</th><th>Total consumido</th><th>Diferencia</th><th></th></tr></thead>
+      <thead><tr><th>Pharmacie</th><th>Total pris en charge</th><th>Total consommé</th><th>Différence</th><th></th></tr></thead>
       <tbody>
       {% for row in balance %}
         <tr>
@@ -47,15 +47,15 @@
 <section class="block report-detail-block">
   <div class="summary-heading">
     <div>
-      <h2>Detalle por pedido para {{ year }}</h2>
-      <p>Importes por laboratorio y farmacia, con el balance acumulado de años anteriores.</p>
+      <h2>Détail par commande pour {{ year }}</h2>
+      <p>Montants par laboratoire et par pharmacie, avec report des soldes des exercices précédents.</p>
     </div>
   </div>
   {% if can_edit_reports %}
     <form method="post" class="report-opening-form">
       <input type="hidden" name="year" value="{{ year }}">
       <input type="hidden" name="warehouse" value="{{ warehouse }}">
-      <strong>Saldo inicial acumulado anterior</strong>
+      <strong>Solde d’ouverture cumulé</strong>
       <div class="report-opening-grid">
         {% for pharmacy in report_detail.pharmacies %}
           <label class="form-field">
@@ -65,16 +65,16 @@
           </label>
         {% endfor %}
       </div>
-      <button class="btn btn-blue" type="submit">Guardar saldo inicial</button>
+      <button class="btn btn-blue" type="submit">Enregistrer le solde initial</button>
     </form>
   {% endif %}
   <div class="table-wrap report-detail-wrap">
     <table class="data-table report-detail-table">
       <thead>
         <tr>
-          <th>N.º pedido</th>
-          <th>Fecha</th>
-          <th>Laboratorio</th>
+          <th>N° de commande</th>
+          <th>Date</th>
+          <th>Laboratoire</th>
           <th>PPH remisé</th>
           {% for pharmacy in report_detail.pharmacies %}
             <th class="pharmacy-header-cell pharmacy-column-{{ loop.index0 % 2 }}">{{ ui.pharmacy_header(pharmacy) }}</th>
@@ -108,10 +108,10 @@
             <td class="{% if row.g_labo.negative %}report-negative{% endif %}">{{ row.g_labo.display }}</td>
           </tr>
         {% else %}
-          <tr><td colspan="{{ report_detail.pharmacies|length + 6 }}" class="empty">Sin pedidos para este ejercicio.</td></tr>
+          <tr><td colspan="{{ report_detail.pharmacies|length + 6 }}" class="empty">Aucune commande pour cet exercice.</td></tr>
         {% endfor %}
         <tr class="report-total-row">
-          <td colspan="3"><strong>Balance acumulado</strong></td>
+          <td colspan="3"><strong>Solde cumulé</strong></td>
           <td>{{ report_detail.totals.pph_remised.display }}</td>
           {% for pharmacy in report_detail.pharmacies %}
             {% set value = report_detail.totals.pharmacy_values[pharmacy] %}
@@ -126,10 +126,10 @@
 </section>
 
 <section class="block">
-  <h2>Estadisticas de pedidos por proveedor para {{ year }}</h2>
+  <h2>Statistiques des commandes par fournisseur pour {{ year }}</h2>
   <div class="table-wrap">
     <table class="data-table">
-      <thead><tr><th>Proveedor</th><th>Pedidos</th><th>Cantidad total</th><th>Importe total PPH descontado</th></tr></thead>
+      <thead><tr><th>Fournisseur</th><th>Commandes</th><th>Quantité totale</th><th>Montant total du PPH remisé</th></tr></thead>
       <tbody>
       {% for row in labs %}
         <tr><td>{{ row.supplier }}</td><td>{{ row.orders }}</td><td>{{ row.quantity }}</td><td>{{ row.amount }}</td></tr>

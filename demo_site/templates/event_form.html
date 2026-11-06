@@ -2,15 +2,15 @@
 {% import "macros.html" as ui %}
 
 {% block content %}
-{{ ui.page_header("Crear evento", "Informacion del evento") }}
+{{ ui.page_header("Créer un événement", "Informations sur l'événement") }}
 <form class="block form-grid" method="post">
-  {{ ui.input_field("title", "Titulo") }}
-  {{ ui.input_field("supplier_id", "Proveedor") }}
-  {{ ui.input_field("assigned_to", "Asignado a", values.assigned_to) }}
-  {{ ui.date_field("date", "Fecha", values.date) }}
+  {{ ui.input_field("title", "Titre") }}
+  {{ ui.input_field("supplier_id", "Fournisseur") }}
+  {{ ui.input_field("assigned_to", "Assigné à", values.assigned_to) }}
+  {{ ui.date_field("date", "Date", values.date) }}
   <div class="form-actions">
-    <button class="btn btn-white" name="save_new" value="1" type="submit">Guardar y nuevo</button>
-    <button class="btn btn-blue" type="submit">Guardar</button>
+    <button class="btn btn-white" name="save_new" value="1" type="submit">Enregistrer et créer</button>
+    <button class="btn btn-blue" type="submit">Enregistrer</button>
   </div>
 </form>
 {% endblock %}

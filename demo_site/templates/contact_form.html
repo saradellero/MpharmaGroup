@@ -2,20 +2,20 @@
 {% import "macros.html" as ui %}
 
 {% block content %}
-{{ ui.page_header("Crear contacto", "Informacion general y descriptiva") }}
+{{ ui.page_header("Créer un contact", "Informations générales et descriptives") }}
 <form class="block form-grid" method="post">
-  {{ ui.input_field("title", "Titulo") }}
-  {{ ui.input_field("first_name", "Nombre") }}
-  {{ ui.input_field("last_name", "Apellido") }}
-  {{ ui.input_field("email", "Email", type="email") }}
-  {{ ui.input_field("mobile", "Movil") }}
-  {{ ui.input_field("phone", "Telefono") }}
-  {{ ui.input_field("supplier_id", "Proveedor") }}
-  {{ ui.date_field("birthdate", "Fecha de nacimiento") }}
-  <label class="form-field form-field-wide"><span>Descripcion</span><textarea class="input textarea" name="description"></textarea></label>
+  {{ ui.input_field("title", "Titre") }}
+  {{ ui.input_field("first_name", "Prénom") }}
+  {{ ui.input_field("last_name", "Nom") }}
+  {{ ui.input_field("email", "E-mail", type="email") }}
+  {{ ui.input_field("mobile", "Mobile") }}
+  {{ ui.input_field("phone", "Téléphone") }}
+  {{ ui.input_field("supplier_id", "Fournisseur") }}
+  {{ ui.date_field("birthdate", "Date de naissance") }}
+  <label class="form-field form-field-wide"><span>Description</span><textarea class="input textarea" name="description"></textarea></label>
   <div class="form-actions">
-    <button class="btn btn-white" name="save_new" value="1" type="submit">Guardar y nuevo</button>
-    <button class="btn btn-blue" type="submit">Guardar</button>
+    <button class="btn btn-white" name="save_new" value="1" type="submit">Enregistrer et créer</button>
+    <button class="btn btn-blue" type="submit">Enregistrer</button>
   </div>
 </form>
 {% endblock %}

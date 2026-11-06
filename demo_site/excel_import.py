@@ -6,6 +6,7 @@ from typing import BinaryIO
 from openpyxl import Workbook, load_workbook
 
 from .data import TABLES
+from .i18n import SPANISH_TRANSLATIONS
 from .storage import get_extra_fields, get_visible_fields
 
 
@@ -51,7 +52,11 @@ def looks_like_header(table_key: str, row: tuple[object, ...]) -> bool:
         for _field, label in TABLES[table_key]["columns"]
     ]
     received = [normalize_header(value) for value in row[: len(expected)]]
-    return received == expected
+    legacy_spanish = [
+        normalize_header(SPANISH_TRANSLATIONS.get(label, label))
+        for _field, label in TABLES[table_key]["columns"]
+    ]
+    return received in (expected, legacy_spanish)
 
 
 def normalize_header(value: object) -> str:

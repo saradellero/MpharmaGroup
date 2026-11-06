@@ -3,23 +3,23 @@
 
 {% block content %}
 {{ ui.page_header(
-  "Facturas del pedido " ~ order_id,
-  "Productos seleccionados y condiciones de facturacion",
-  "Volver al gestor",
+  "Facturation de la commande " ~ order_id,
+  "Produits sélectionnés et conditions de facturation",
+  "Retour au gestionnaire",
   url_for("purchaseorder_edit", order_id=order_id, mode="manager")
 ) }}
 
 <section class="block invoice-block">
   <div class="block-toolbar">
     <div>
-      <strong>{{ order.supplier or "Sin proveedor" }}</strong>
-      <span class="invoice-toolbar-note">Pedido {{ order_id }}</span>
+      <strong>{{ order.supplier or "Sans fournisseur" }}</strong>
+      <span class="invoice-toolbar-note">Commande {{ order_id }}</span>
     </div>
-    <button class="btn btn-white no-print" type="button" onclick="window.print()">Imprimir</button>
+    <button class="btn btn-white no-print" type="button" onclick="window.print()">Imprimer</button>
   </div>
 
   <p class="invoice-formula-note">
-    Descuento % = |1 - PPH descontado / PPH| x 100. Puedes introducir el descuento o el PPH descontado; al introducir U.G %, el PPH descontado se calcula como PPH x (1 + U.G % / 100).
+    Remise % = |1 - PPH remisé / PPH| × 100. Vous pouvez saisir soit la remise, soit le PPH remisé. En saisissant U.G %, le PPH remisé est calculé selon la formule PPH × (1 + U.G % / 100).
   </p>
 
   <form id="invoice-form" method="post" action="{{ url_for('purchaseorder_invoices', order_id=order_id) }}">
@@ -27,15 +27,15 @@
       <table class="data-table invoice-table" data-invoice-table>
       <thead>
         <tr>
-          <th>Producto</th>
+          <th>Produit</th>
           <th>PPV</th>
           <th>PPH</th>
-          <th>IVA</th>
-          <th>Descuento %</th>
+          <th>TVA</th>
+          <th>Remise %</th>
           <th>U.G %</th>
-          <th>PPH descontado</th>
-          <th>Cantidad total</th>
-          <th>Total PPH descontado</th>
+          <th>PPH remisé</th>
+          <th>Quantité totale</th>
+          <th>Total PPH remisé</th>
         </tr>
       </thead>
       <tbody>
@@ -47,51 +47,51 @@
             <td><span data-field="pph">{{ product.unit_price|price2 }}</span></td>
             <td>{{ product.tax }}</td>
             <td>
-              <input class="input invoice-input" type="text" inputmode="decimal" data-field="discount" name="invoice_discount_{{ loop.index0 }}" value="{{ invoice_values.get('discount_pct', '') }}" aria-label="Descuento de {{ product.name }}">
+              <input class="input invoice-input" type="text" inputmode="decimal" data-field="discount" name="invoice_discount_{{ loop.index0 }}" value="{{ invoice_values.get('discount_pct', '') }}" aria-label="Remise de {{ product.name }}">
             </td>
             <td>
               <input class="input invoice-input" type="text" inputmode="decimal" data-field="ug" name="invoice_ug_{{ loop.index0 }}" value="{{ invoice_values.get('ug_pct', '') }}" aria-label="U.G de {{ product.name }}">
             </td>
             <td>
-              <input class="input invoice-input" type="text" inputmode="decimal" data-field="pph-discounted" name="invoice_pph_discounted_{{ loop.index0 }}" value="{{ invoice_values.get('pph_discounted', '')|price2 }}" aria-label="PPH descontado de {{ product.name }}">
+              <input class="input invoice-input" type="text" inputmode="decimal" data-field="pph-discounted" name="invoice_pph_discounted_{{ loop.index0 }}" value="{{ invoice_values.get('pph_discounted', '')|price2 }}" aria-label="PPH remisé de {{ product.name }}">
               <input type="hidden" data-field="input-mode" name="invoice_mode_{{ loop.index0 }}" value="">
             </td>
             <td class="numeric-cell" data-field="quantity">{{ product.quantity }}</td>
             <td class="numeric-cell" data-field="line-total">-</td>
           </tr>
         {% else %}
-          <tr><td colspan="9" class="empty">No hay productos seleccionados en este pedido.</td></tr>
+          <tr><td colspan="9" class="empty">Aucun produit n'a été sélectionné dans cette commande.</td></tr>
         {% endfor %}
       </tbody>
       {% if products %}
         <tfoot>
           <tr class="invoice-initial-total-row">
-            <th colspan="7">Total PPH inicial</th>
+            <th colspan="7">Total PPH initial</th>
             <th class="numeric-cell">{{ quantity_total }}</th>
             <th class="numeric-cell" data-total="initial-amount">{{ initial_amount }}</th>
           </tr>
           <tr class="invoice-total-row">
-            <th colspan="7">Subtotal PPH descontado</th>
+            <th colspan="7">Sous-total PPH remisé</th>
             <th class="numeric-cell" data-total="quantity">{{ quantity_total }}</th>
             <th class="numeric-cell" data-total="amount">{{ subtotal_amount }}</th>
           </tr>
           <tr class="invoice-product-gain-row">
-            <th colspan="8">Ganancia por descuentos de productos</th>
+            <th colspan="8">Gain sur les remises produits</th>
             <th class="numeric-cell" data-total="product-gain">{{ product_discount_amount }}</th>
           </tr>
           <tr class="invoice-global-discount-row">
-            <th colspan="7">Descuento total adicional (%)</th>
+            <th colspan="7">Remise additionnelle totale (%)</th>
             <th>
-              <input class="input invoice-input" type="text" inputmode="decimal" name="invoice_total_discount" data-total-discount value="{{ total_discount|default('') }}" aria-label="Descuento total adicional">
+              <input class="input invoice-input" type="text" inputmode="decimal" name="invoice_total_discount" data-total-discount value="{{ total_discount|default('') }}" aria-label="Remise additionnelle totale">
             </th>
             <th class="numeric-cell" data-total="final-amount">{{ final_amount }}</th>
           </tr>
           <tr class="invoice-additional-gain-row">
-            <th colspan="8">Ganancia por descuento adicional</th>
+            <th colspan="8">Gain sur la remise additionnelle</th>
             <th class="numeric-cell" data-total="additional-gain">{{ additional_discount_amount }}</th>
           </tr>
           <tr class="invoice-gain-row">
-            <th colspan="8">Ganancia acumulada</th>
+            <th colspan="8">Gain cumulé</th>
             <th class="numeric-cell" data-total="gain-amount">{{ total_gain }}</th>
           </tr>
         </tfoot>
@@ -99,8 +99,8 @@
       </table>
     </div>
     <div class="form-actions invoice-actions">
-      <a class="btn btn-white" href="{{ url_for('purchaseorder_edit', order_id=order_id, mode='manager') }}">Cancelar</a>
-      <button class="btn btn-blue" type="submit">Guardar factura</button>
+      <a class="btn btn-white" href="{{ url_for('purchaseorder_edit', order_id=order_id, mode='manager') }}">Annuler</a>
+      <button class="btn btn-blue" type="submit">Enregistrer la facturation</button>
     </div>
   </form>
 </section>

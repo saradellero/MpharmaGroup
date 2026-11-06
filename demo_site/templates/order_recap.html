@@ -3,8 +3,8 @@
 
 {% block content %}
 {{ ui.page_header(
-  "Recapitulacion del pedido " ~ order_id,
-  "Importe por farmacia calculado con el PPH descontado",
+  "Récapitulatif de la commande " ~ order_id,
+  "Montant par pharmacie calculé à partir du PPH remisé",
   back_label,
   back_url
 ) }}
@@ -12,23 +12,23 @@
 <section class="block">
   <div class="block-toolbar">
     <div>
-      <strong>{{ order.supplier or "Sin proveedor" }}</strong>
-      <span class="invoice-toolbar-note">Pedido {{ order_id }}</span>
+      <strong>{{ order.supplier or "Sans fournisseur" }}</strong>
+      <span class="invoice-toolbar-note">Commande {{ order_id }}</span>
     </div>
-    <button class="btn btn-white no-print" type="button" onclick="window.print()">Imprimir</button>
+    <button class="btn btn-white no-print" type="button" onclick="window.print()">Imprimer</button>
   </div>
-  <p class="invoice-formula-note">Cada celda muestra el importe del producto por farmacia. La cantidad total y el PPH aparecen a continuacion para comprobar las actualizaciones del pedido.</p>
+  <p class="invoice-formula-note">Chaque cellule affiche le montant du produit par pharmacie. La quantité totale et le PPH apparaissent ci-dessous pour vérifier les mises à jour de la commande.</p>
 
   {% if recap.rows %}
     <div class="table-wrap sticky-summary-wrap">
       <table class="data-table order-summary-table recap-table">
         <thead>
           <tr>
-            <th>Producto</th>
+            <th>Produit</th>
             {% for pharmacy in recap.pharmacies %}
               <th class="pharmacy-header-cell pharmacy-column-{{ loop.index0 % 2 }}">{{ ui.pharmacy_header(pharmacy) }}</th>
             {% endfor %}
-            <th>Cantidad total</th>
+            <th>Quantité totale</th>
             <th>PPH</th>
             <th>Total PPH</th>
           </tr>
@@ -48,7 +48,7 @@
         </tbody>
         <tfoot>
           <tr class="summary-initial-total-row">
-            <th>Total PPH inicial</th>
+            <th>Total PPH initial</th>
             {% for pharmacy in recap.pharmacies %}
               <th class="numeric-cell pharmacy-column-{{ loop.index0 % 2 }}">{{ recap.initial_totals.get(pharmacy, "0") }}</th>
             {% endfor %}
@@ -57,7 +57,7 @@
             <th class="numeric-cell">{{ recap.grand_initial_total }}</th>
           </tr>
           <tr class="summary-total-row">
-            <th>Total PPH descontado</th>
+            <th>Total PPH remisé</th>
             {% for pharmacy in recap.pharmacies %}
               <th class="numeric-cell pharmacy-column-{{ loop.index0 % 2 }}">{{ recap.totals.get(pharmacy, "0") }}</th>
             {% endfor %}
@@ -66,7 +66,7 @@
             <th class="numeric-cell">{{ recap.grand_total }}</th>
           </tr>
           <tr class="summary-gain-row">
-            <th>Ganancia acumulada</th>
+            <th>Gain cumulé</th>
             {% for pharmacy in recap.pharmacies %}
               <th class="numeric-cell pharmacy-column-{{ loop.index0 % 2 }}">{{ recap.gains.get(pharmacy, "0") }}</th>
             {% endfor %}
@@ -78,7 +78,7 @@
       </table>
     </div>
   {% else %}
-    <p class="empty summary-empty">Todavia no hay productos seleccionados por las farmacias.</p>
+    <p class="empty summary-empty">Aucun produit n'a encore été sélectionné par les pharmacies.</p>
   {% endif %}
 </section>
 {% endblock %}

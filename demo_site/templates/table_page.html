@@ -3,35 +3,42 @@
 
 {% block content %}
 {% set action_url = url_for(table.create_endpoint) if table.create_endpoint else None %}
-{% set edit_action_label = "Ver listado" if edit_mode else "Editar " ~ table.title|lower %}
+{% set edit_action_label = "Voir la liste" if edit_mode else {
+  "suppliers": "Modifier les fournisseurs",
+  "contacts": "Modifier les contacts",
+  "products": "Modifier les produits",
+  "offers": "Modifier les offres",
+  "purchaseorders": "Modifier les commandes",
+  "users": "Modifier les pharmacies"
+}.get(table_key, "Modifier") %}
 {% set edit_action_url = list_url if edit_mode else edit_url %}
 {{ ui.page_header(
   table.title,
-  "Listado editable con persistencia SQLite",
+  "Liste modifiable avec persistance SQLite",
   edit_action_label if can_edit else None,
   edit_action_url if can_edit else None,
-  "Crear" if action_url and not edit_mode and can_edit else None,
+  "Créer" if action_url and not edit_mode and can_edit else None,
   action_url if action_url and not edit_mode else None
 ) }}
 {% if table_key == "purchaseorders" %}
   <div class="tabs">
-    <a class="{% if not archived %}selected{% endif %}" href="{{ url_for('purchaseorders') }}">Actuales</a>
-    <a class="{% if archived %}selected{% endif %}" href="{{ url_for('purchaseorders_archived') }}">Archivados</a>
+    <a class="{% if not archived %}selected{% endif %}" href="{{ url_for('purchaseorders') }}">En cours</a>
+    <a class="{% if archived %}selected{% endif %}" href="{{ url_for('purchaseorders_archived') }}">Archives</a>
   </div>
 {% endif %}
 {% if edit_mode %}
   <section class="block">
     <form class="bulk-upload bulk-upload-form" method="post" action="{{ list_url }}" enctype="multipart/form-data">
-      <a class="btn btn-white" href="{{ url_for('table_import_template', table_key=table_key) }}">Plantilla Excel</a>
+      <a class="btn btn-white" href="{{ url_for('table_import_template', table_key=table_key) }}">Modèle Excel</a>
       <input class="input file-input" type="file" name="excel_file" accept=".xlsx,.xlsm">
-      <button class="btn btn-white" type="submit" name="bulk_action" value="import_excel">Cargar Excel</button>
+      <button class="btn btn-white" type="submit" name="bulk_action" value="import_excel">Importer un fichier Excel</button>
       <span class="bulk-upload__hint">Max. {{ upload_limit_label }}</span>
     </form>
     <form class="records-edit-form records-edit-form-{{ table_key }}" method="post" action="{{ edit_form_url }}">
       <div class="edit-toolbar">
-        <button class="btn btn-white" type="button" data-select-toggle>Seleccionar todo</button>
+        <button class="btn btn-white" type="button" data-select-toggle>Tout sélectionner</button>
         {% if table_key != "purchaseorders" or can_delete_purchaseorders %}
-          <button class="btn btn-danger" type="submit" name="row_action" value="delete_selected">Eliminar seleccionados</button>
+          <button class="btn btn-danger" type="submit" name="row_action" value="delete_selected">Supprimer la sélection</button>
         {% endif %}
       </div>
       <div class="table-wrap">
@@ -50,7 +57,7 @@
               <tr{% if row_locked %} class="row-locked"{% endif %}>
                 <input type="hidden" name="record_id" value="{{ row.id }}">
                 <td class="row-select-cell">
-                  <input class="row-select-checkbox" type="checkbox" name="selected_record_id" value="{{ row.id }}" aria-label="Seleccionar fila {{ loop.index }}"{% if row_locked %} disabled{% endif %}>
+                  <input class="row-select-checkbox" type="checkbox" name="selected_record_id" value="{{ row.id }}" aria-label="Sélectionner la ligne {{ loop.index }}"{% if row_locked %} disabled{% endif %}>
                 </td>
                 {% for field in hidden_fields %}
                   <input type="hidden" name="record_{{ row.id }}_{{ field }}" value="{{ row.get(field, '') }}">
@@ -96,13 +103,13 @@
                     {{ ui.date_control("new_" ~ key) }}
                   {% elif table_key == 'products' and key == 'tax' %}
                     <select class="input product-tax-select" name="new_{{ key }}">
-                      <option value="">IVA</option>
+                      <option value="">TVA</option>
                       {% for tax_option in ['0%', '7%', '10%', '20%'] %}
                         <option value="{{ tax_option }}">{{ tax_option }}</option>
                       {% endfor %}
                     </select>
                   {% else %}
-                    <input class="input" type="text" name="new_{{ key }}" placeholder="{{ 'Nuevo registro' if loop.first else label }}"{% if table_key == 'products' and key in ['ppv', 'pph'] %} inputmode="decimal"{% endif %}{% if suggestion_list %} list="{{ suggestion_list }}" autocomplete="off"{% endif %}>
+                    <input class="input" type="text" name="new_{{ key }}" placeholder="{{ 'Nouvelle entrée' if loop.first else label }}"{% if table_key == 'products' and key in ['ppv', 'pph'] %} inputmode="decimal"{% endif %}{% if suggestion_list %} list="{{ suggestion_list }}" autocomplete="off"{% endif %}>
                   {% endif %}
                 </td>
               {% endfor %}
@@ -114,8 +121,8 @@
         </table>
       </div>
       <div class="form-actions">
-        <a class="btn btn-white" href="{{ list_url }}">Cancelar</a>
-        <button class="btn btn-blue" type="submit">Guardar cambios</button>
+        <a class="btn btn-white" href="{{ list_url }}">Annuler</a>
+        <button class="btn btn-blue" type="submit">Enregistrer les modifications</button>
       </div>
     </form>
     {% if table_key == "suppliers" %}
@@ -186,7 +193,7 @@
 
           suggestions.hidden = false;
           if (!matches.length) {
-            suggestions.innerHTML = '<div class="autocomplete-empty">Sin coincidencias.</div>';
+            suggestions.innerHTML = '<div class="autocomplete-empty">Aucune correspondance.</div>';
             return;
           }
 
@@ -218,8 +225,8 @@
     <section class="block order-summary-block">
       <div class="summary-heading">
         <div>
-          <h2>Resumen por farmacia</h2>
-          <p>Pedido {{ order_summary.order_number }}</p>
+          <h2>Résumé par pharmacie</h2>
+          <p>Commande {{ order_summary.order_number }}</p>
         </div>
       </div>
       {% if order_summary.rows %}
@@ -227,7 +234,7 @@
           <table class="data-table order-summary-table">
             <thead>
               <tr>
-                <th>Producto</th>
+                <th>Produit</th>
                 {% for pharmacy in order_summary.pharmacies %}
                   <th class="pharmacy-header-cell pharmacy-column-{{ loop.index0 % 2 }}">{{ ui.pharmacy_header(pharmacy) }}</th>
                 {% endfor %}
@@ -255,7 +262,7 @@
           </table>
         </div>
       {% else %}
-        <p class="empty summary-empty">No hay productos seleccionados por farmacias para este pedido.</p>
+        <p class="empty summary-empty">Aucun produit n'a été sélectionné par les pharmacies pour cette commande.</p>
       {% endif %}
     </section>
   {% endif %}
@@ -274,7 +281,7 @@
           var allSelected = checkboxes.every(function (checkbox) {
             return checkbox.checked;
           });
-          toggle.textContent = allSelected ? "Deseleccionar todo" : "Seleccionar todo";
+          toggle.textContent = allSelected ? "Tout désélectionner" : "Tout sélectionner";
           toggle.setAttribute("aria-pressed", allSelected ? "true" : "false");
         }
 

@@ -2,18 +2,18 @@
 {% import "macros.html" as ui %}
 
 {% block content %}
-{{ ui.page_header("Editar perfil", "Actualiza los datos de la cuenta demo") }}
+{{ ui.page_header("Modifier le profil", "Mettez à jour les informations du compte de démonstration") }}
 <form class="block form-grid" method="post">
-  {{ ui.input_field("email", "Email", profile.email) }}
-  {{ ui.input_field("first_name", "Nombre", profile.first_name) }}
-  {{ ui.input_field("last_name", "Apellido", profile.last_name) }}
-  {{ ui.input_field("pharmacy_name", "Farmacia", profile.pharmacy_name) }}
-  {{ ui.input_field("mobile", "Movil", profile.mobile) }}
-  {{ ui.input_field("phone", "Telefono", profile.phone) }}
-  {{ ui.input_field("address", "Direccion", profile.address) }}
-  {{ ui.input_field("city", "Ciudad", profile.city) }}
-  {{ ui.select_field("country", "Pais", ["Maroc", "Espana", "Francia"], profile.country) }}
-  {{ ui.select_field("time_zone", "Zona horaria", ["Africa/Casablanca", "Europe/Madrid", "UTC"], profile.time_zone) }}
-  <div class="form-actions"><button class="btn btn-blue" type="submit">Guardar</button></div>
+  {{ ui.input_field("email", "E-mail", profile.email) }}
+  {{ ui.input_field("first_name", "Prénom", profile.first_name) }}
+  {{ ui.input_field("last_name", "Nom", profile.last_name) }}
+  {{ ui.input_field("pharmacy_name", "Pharmacie", profile.pharmacy_name) }}
+  {{ ui.input_field("mobile", "Mobile", profile.mobile) }}
+  {{ ui.input_field("phone", "Téléphone", profile.phone) }}
+  {{ ui.input_field("address", "Adresse", profile.address) }}
+  {{ ui.input_field("city", "Ville", profile.city) }}
+  {{ ui.select_field("country", "Pays", ["Maroc", "Espagne", "France"], profile.country) }}
+  {{ ui.select_field("time_zone", "Fuseau horaire", ["Africa/Casablanca", "Europe/Madrid", "UTC"], profile.time_zone) }}
+  <div class="form-actions"><button class="btn btn-blue" type="submit">Enregistrer</button></div>
 </form>
 {% endblock %}

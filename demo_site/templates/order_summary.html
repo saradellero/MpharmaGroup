@@ -2,20 +2,20 @@
 {% import "macros.html" as ui %}
 
 {% block content %}
-{{ ui.page_header("Pedido: " ~ order_id, "Resumen acumulado por farmacia") }}
+{{ ui.page_header("Commande : " ~ order_id, "Synthèse consolidée par pharmacie") }}
 <div class="order-detail-layout">
   <section class="block order-detail-main">
     <div class="order-summary-meta">
-      <div><span>Objeto</span><strong>{{ order.subject or "Sin objeto" }}</strong></div>
-      <div><span>Proveedor</span><strong>{{ order.supplier or "Sin proveedor" }}</strong></div>
-      <div><span>Fecha limite</span><strong>{{ order.deadline|date_display if order.deadline else "Sin fecha" }}</strong></div>
-      <div><span>Estado</span><strong>{{ order.status or "Abierto" }}</strong></div>
+      <div><span>Objet</span><strong>{{ order.subject or "Sans objet" }}</strong></div>
+      <div><span>Fournisseur</span><strong>{{ order.supplier or "Sans fournisseur" }}</strong></div>
+      <div><span>Date limite</span><strong>{{ order.deadline|date_display if order.deadline else "Sans date" }}</strong></div>
+      <div><span>Statut</span><strong>{{ order.status or "Ouvert" }}</strong></div>
     </div>
 
     <div class="summary-heading order-summary-heading">
       <div>
-        <h2>Productos acumulados</h2>
-        <p>Las cantidades muestran lo solicitado por cada farmacia y el total conjunto.</p>
+        <h2>Produits consolidés</h2>
+        <p>Les quantités correspondent aux demandes de chaque pharmacie et au total consolidé.</p>
       </div>
     </div>
 
@@ -24,7 +24,7 @@
         <table class="data-table order-summary-table">
           <thead>
             <tr>
-              <th>Producto</th>
+              <th>Produit</th>
               {% for pharmacy in order_summary.pharmacies %}
                 <th class="pharmacy-header-cell pharmacy-column-{{ loop.index0 % 2 }}">{{ ui.pharmacy_header(pharmacy) }}</th>
               {% endfor %}
@@ -52,32 +52,32 @@
         </table>
       </div>
     {% else %}
-      <p class="empty summary-empty">Todavia no hay productos seleccionados por las farmacias.</p>
+      <p class="empty summary-empty">Aucun produit n'a encore été sélectionné par les pharmacies.</p>
     {% endif %}
   </section>
 
   <aside class="order-side-panel">
-    <h2>Opciones</h2>
+    <h2>Options</h2>
     {% if modify_url %}
-      <a class="side-action" href="{{ modify_url }}">Modificar pedido</a>
+      <a class="side-action" href="{{ modify_url }}">Modifier la commande</a>
     {% else %}
-      <span class="side-action disabled">Modificar pedido bloqueado</span>
+      <span class="side-action disabled">Commande verrouillée</span>
     {% endif %}
     {% if manager_url %}
       {% if order.status == "Cerrado" and can_reopen %}
-        <a class="side-action" href="{{ manager_url }}">Reabrir pedido</a>
+        <a class="side-action" href="{{ manager_url }}">Rouvrir la commande</a>
       {% else %}
-        <a class="side-action" href="{{ manager_url }}">Modificar como gestor</a>
+        <a class="side-action" href="{{ manager_url }}">Modifier en tant que gestionnaire</a>
       {% endif %}
     {% endif %}
-    <a class="side-action" href="{{ url_for('purchaseorder_recap', order_id=order_id) }}">Recapitulacion</a>
-    <a class="side-action" href="{{ print_url }}" target="_blank">Imprimir pedido</a>
+    <a class="side-action" href="{{ url_for('purchaseorder_recap', order_id=order_id) }}">Récapitulatif</a>
+    <a class="side-action" href="{{ print_url }}" target="_blank">Imprimer la commande</a>
     {% if modification_locked and order.status == "Cerrado" %}
-      <p>El pedido esta cerrado y se encuentra en pedidos archivados. No se puede modificar.</p>
+      <p>La commande est clôturée et se trouve dans les commandes archivées. Elle ne peut pas être modifiée.</p>
     {% elif modification_locked %}
-      <p>La fecha limite ya ha llegado. Solo el gestor puede modificar este pedido.</p>
+      <p>La date limite est dépassée. Seul le gestionnaire peut modifier cette commande.</p>
     {% else %}
-      <p>Estas cantidades son el resultado acumulado de todas las farmacias.</p>
+      <p>Ces quantités correspondent au cumul des demandes de toutes les pharmacies.</p>
     {% endif %}
   </aside>
 </div>

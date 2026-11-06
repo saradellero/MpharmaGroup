@@ -2,7 +2,7 @@
 {% import "macros.html" as ui %}
 
 {% block content %}
-{{ ui.page_header("Panel", "Resumen operativo del grupo") }}
+{{ ui.page_header("Tableau de bord", "Résumé opérationnel du groupe") }}
 
 <section class="stats-grid">
   {% for stat in stats %}
@@ -19,7 +19,7 @@
 
 <section class="dashboard-grid">
   <div class="block">
-    <h2>Pedidos recientes</h2>
+    <h2>Commandes récentes</h2>
     <div class="mini-list">
       {% for order in recent_orders %}
         <a href="{{ url_for('purchaseorder_edit', order_id=order.number) }}">
@@ -30,7 +30,7 @@
     </div>
   </div>
   <div class="block">
-    <h2>Proximos eventos</h2>
+    <h2>Prochains événements</h2>
     <div class="mini-list">
       {% for event in events %}
         <a href="{{ url_for('events') }}">
