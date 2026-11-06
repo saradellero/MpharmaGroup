@@ -50,7 +50,7 @@ from .data import (
 from .dashboard import build_dashboard_stats
 from .excel_import import build_excel_template, parse_excel_records
 from .validation import validate_login, validate_recovery
-from .i18n import SUPPORTED_LANGUAGES, translate_html
+from .i18n import DEFAULT_LANGUAGE, SUPPORTED_LANGUAGES, translate_html
 from .storage import init_app as init_storage
 from .storage import (
     DEFAULT_GROUP_ID,
@@ -211,6 +211,11 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
     )
     if config:
         app.config.update(config)
+    # Production is French-only. Tests retain a Spanish default so the
+    # existing regression suite can still exercise both language paths.
+    app.config.setdefault("APP_LANGUAGE", DEFAULT_LANGUAGE)
+    if app.config.get("TESTING") and "APP_LANGUAGE" not in (config or {}):
+        app.config["APP_LANGUAGE"] = "es"
     apply_request_limits(app, config or {})
     init_storage(app)
     with app.app_context():
@@ -230,7 +235,11 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
         )
         return {
             "brand": BRAND,
-            "language": session.get("language", "es"),
+            "language": (
+                DEFAULT_LANGUAGE
+                if app.config.get("APP_LANGUAGE") == DEFAULT_LANGUAGE
+                else session.get("language", "es")
+            ),
             "nav_items": visible_nav_items(current_user, NAV_ITEMS),
             "current_user": current_user,
             "upload_limit_label": format_bytes(int(app.config["MAX_CONTENT_LENGTH"])),
@@ -240,7 +249,11 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
 
     @app.after_request
     def localize_response(response: object) -> object:
-        language = session.get("language", "es")
+        language = (
+            DEFAULT_LANGUAGE
+            if app.config.get("APP_LANGUAGE") == DEFAULT_LANGUAGE
+            else session.get("language", "es")
+        )
         if getattr(response, "mimetype", "") == "text/html" and language == "fr":
             response.set_data(translate_html(response.get_data(as_text=True), "fr"))
         response.headers["Content-Language"] = language
@@ -248,9 +261,9 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
 
     @app.route("/set-language")
     def set_language() -> object:
-        language = request.args.get("lang", "es").lower()
+        language = request.args.get("lang", DEFAULT_LANGUAGE).lower()
         if language not in SUPPORTED_LANGUAGES:
-            language = "es"
+            language = DEFAULT_LANGUAGE
         session["language"] = language
         next_url = request.args.get("next", "/")
         if not next_url.startswith("/") or next_url.startswith("//"):

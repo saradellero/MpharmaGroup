@@ -3,7 +3,8 @@ from __future__ import annotations
 import re
 
 
-SUPPORTED_LANGUAGES = {"es", "fr"}
+DEFAULT_LANGUAGE = "fr"
+SUPPORTED_LANGUAGES = {"es", DEFAULT_LANGUAGE}
 
 
 # The application data remains unchanged; this dictionary only covers interface copy.

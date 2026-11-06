@@ -393,7 +393,7 @@ class AppTests(unittest.TestCase):
         self.assertNotIn("Al cerrarlo se bloqueara", html)
         self.assertIn("Chaque cellule affiche le montant du produit", html)
         self.assertIn("Page 1 sur", html)
-        self.assertIn("Espagnol", html)
+        self.assertNotIn("Espagnol", html)
         self.assertIn("Actualiser", html)
         self.assertIn("Aucune correspondance.", html)
         self.assertNotRegex(html, r"Page \d+ de \d+")

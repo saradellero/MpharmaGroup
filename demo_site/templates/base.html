@@ -21,14 +21,6 @@
         <a href="{{ url_for('logout') }}">Salir</a>
       </nav>
     </div>
-    <form class="language-switcher" method="get" action="{{ url_for('set_language') }}">
-      <label class="sr-only" for="language-select">Idioma</label>
-      <select id="language-select" name="lang" onchange="this.form.submit()" aria-label="Idioma">
-        <option value="es" {% if language == "es" %}selected{% endif %}>Español</option>
-        <option value="fr" {% if language == "fr" %}selected{% endif %}>Français</option>
-      </select>
-      <input type="hidden" name="next" value="{{ request.full_path }}">
-    </form>
   </header>
 
   <aside class="side-menu" id="menu">
