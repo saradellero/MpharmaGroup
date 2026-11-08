@@ -53,7 +53,10 @@
     <section class="block">
       <h2>Produits du fournisseur et quantités</h2>
       <p class="bulk-upload__hint">Tous les produits du fournisseur sélectionné sont affichés. Le gestionnaire peut mettre à jour le PPV, le PPH, la TVA et les quantités par pharmacie avant l'enregistrement.</p>
-      <div class="table-wrap">
+      <div class="manager-sticky-header" id="manager-sticky-header" aria-hidden="true">
+        <div class="manager-sticky-header__viewport"></div>
+      </div>
+      <div class="table-wrap manager-table-wrap">
           <table class="data-table editable-table manager-summary-table">
           <thead>
             <tr>
@@ -103,16 +106,17 @@
             {% else %}
               <tr><td colspan="{{ manager_matrix.pharmacies|length + 6 }}" class="empty">Aucun produit disponible pour le fournisseur sélectionné.</td></tr>
             {% endfor %}
-            <tr class="new-row manager-new-product-row">
+            <tr class="new-row manager-new-product-row" id="manager-new-product-row">
               <td class="row-select-cell"></td>
               <td class="manager-new-product-fields">
                 <strong>Nouvelle ligne de produit</strong>
                 <div class="manager-new-product-autocomplete">
-                  <input class="input" id="manager-new-product-name" name="new_product_name" placeholder="Escribe el nombre del medicamento" value="{{ new_product_values.get('name', '') }}" autocomplete="off">
+                  <input class="input" id="manager-new-product-name" name="new_product_name" placeholder="Saisissez le nom du médicament" value="{{ new_product_values.get('name', '') }}" autocomplete="off">
                   <input type="hidden" id="manager-new-product-id" name="new_product_id" value="{{ new_product_values.get('product_id', '') }}">
                   <div class="autocomplete-list" id="manager-new-product-suggestions" hidden></div>
                 </div>
                 <input class="input" name="new_product_barcode" placeholder="Code facultatif" value="{{ new_product_values.get('barcode', '') }}">
+                <button class="btn btn-white manager-new-product-create" type="submit" name="manager_action" value="create_product">Créer</button>
               </td>
               <td><input class="input manager-price-input" name="new_product_ppv" placeholder="PPV obligatoire" value="{{ new_product_values.get('ppv', '')|price2 }}"></td>
               <td><input class="input manager-price-input" name="new_product_pph" placeholder="PPH obligatoire" value="{{ new_product_values.get('pph', '')|price2 }}"></td>
@@ -178,8 +182,123 @@
     var nameInput = document.getElementById("manager-new-product-name");
     var productIdInput = document.getElementById("manager-new-product-id");
     var suggestions = document.getElementById("manager-new-product-suggestions");
+    var managerPanel = document.querySelector(".manager-options-panel");
+    var managerTableWrap = document.querySelector(".manager-table-wrap");
+    var managerTable = managerTableWrap
+      ? managerTableWrap.querySelector(".manager-summary-table")
+      : null;
+    var managerTableHead = managerTable
+      ? managerTable.querySelector("thead")
+      : null;
+    var stickyHeader = document.getElementById("manager-sticky-header");
+    var stickyHeaderViewport = stickyHeader
+      ? stickyHeader.querySelector(".manager-sticky-header__viewport")
+      : null;
     if (!nameInput || !productIdInput || !suggestions) {
       return;
+    }
+
+    function updateManagerHeaderPosition() {
+      if (!managerPanel) {
+        return;
+      }
+      var headerTop = Math.ceil(managerPanel.getBoundingClientRect().bottom);
+      document.documentElement.style.setProperty(
+        "--manager-table-header-top",
+        headerTop + "px"
+      );
+    }
+
+    function buildStickyHeader() {
+      if (!managerTable || !managerTableHead || !stickyHeaderViewport) {
+        return;
+      }
+      var sourceCells = managerTableHead.querySelectorAll("th");
+      var clonedTable = document.createElement("table");
+      clonedTable.className = "data-table manager-summary-table manager-sticky-header__table";
+      clonedTable.style.width = Math.ceil(managerTable.getBoundingClientRect().width) + "px";
+      var colgroup = document.createElement("colgroup");
+      sourceCells.forEach(function (cell) {
+        var col = document.createElement("col");
+        col.style.width = Math.ceil(cell.getBoundingClientRect().width) + "px";
+        colgroup.appendChild(col);
+      });
+      clonedTable.appendChild(colgroup);
+      clonedTable.appendChild(managerTableHead.cloneNode(true));
+      stickyHeaderViewport.replaceChildren(clonedTable);
+    }
+
+    function updateStickyHeader() {
+      if (!managerTable || !managerTableHead || !managerTableWrap || !stickyHeader) {
+        return;
+      }
+      updateManagerHeaderPosition();
+      var stickyTop = parseFloat(
+        getComputedStyle(document.documentElement)
+          .getPropertyValue("--manager-table-header-top")
+      ) || 50;
+      var headerRect = managerTableHead.getBoundingClientRect();
+      var wrapperRect = managerTableWrap.getBoundingClientRect();
+      var headerHeight = headerRect.height || 44;
+      var shouldShow =
+        headerRect.bottom <= stickyTop &&
+        wrapperRect.bottom > stickyTop + headerHeight &&
+        wrapperRect.top < stickyTop;
+      stickyHeader.classList.toggle("is-visible", shouldShow);
+      if (!shouldShow) {
+        return;
+      }
+      stickyHeader.style.left = Math.round(wrapperRect.left) + "px";
+      stickyHeader.style.width = Math.round(managerTableWrap.clientWidth) + "px";
+      stickyHeaderViewport.scrollLeft = managerTableWrap.scrollLeft;
+    }
+
+    function syncStickyHeader() {
+      if (!stickyHeaderViewport || !managerTableWrap) {
+        return;
+      }
+      stickyHeaderViewport.scrollLeft = managerTableWrap.scrollLeft;
+      updateStickyHeader();
+    }
+
+    function restoreNewProductPosition() {
+      if (window.location.hash !== "#manager-new-product-row") {
+        return;
+      }
+      var newProductRow = document.getElementById("manager-new-product-row");
+      if (!newProductRow) {
+        return;
+      }
+      var stickyTop = parseFloat(
+        getComputedStyle(document.documentElement)
+          .getPropertyValue("--manager-table-header-top")
+      ) || 50;
+      var rowTop = newProductRow.getBoundingClientRect().top;
+      window.scrollTo({
+        top: Math.max(0, window.scrollY + rowTop - stickyTop),
+        behavior: "auto"
+      });
+    }
+
+    updateManagerHeaderPosition();
+    buildStickyHeader();
+    updateStickyHeader();
+    window.setTimeout(restoreNewProductPosition, 0);
+    window.addEventListener("resize", updateManagerHeaderPosition);
+    window.addEventListener("resize", buildStickyHeader);
+    window.addEventListener("resize", updateStickyHeader);
+    window.addEventListener("scroll", updateStickyHeader, { passive: true });
+    if (managerTableWrap) {
+      managerTableWrap.addEventListener("scroll", syncStickyHeader, { passive: true });
+    }
+    if (window.ResizeObserver) {
+      new ResizeObserver(updateManagerHeaderPosition).observe(managerPanel);
+      if (managerTable) {
+        new ResizeObserver(function () {
+          buildStickyHeader();
+          updateStickyHeader();
+        }).observe(managerTable);
+      }
     }
 
     function normalize(value) {

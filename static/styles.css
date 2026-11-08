@@ -1473,6 +1473,57 @@ textarea {
   min-width: 1120px;
 }
 
+/* Keep the manager's pharmacy headers visible while the page is scrolled. */
+.manager-table-wrap .manager-summary-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.manager-table-wrap .manager-summary-table thead th {
+  position: static;
+  top: auto;
+  z-index: auto;
+  background: #edf4f8;
+  box-shadow: 0 2px 0 rgba(24, 45, 73, 0.14);
+}
+
+.manager-sticky-header {
+  position: fixed;
+  top: var(--manager-table-header-top, 50px);
+  z-index: 27;
+  display: none;
+  overflow: hidden;
+  pointer-events: none;
+  background: #edf4f8;
+  border: 1px solid var(--line);
+  border-top: 0;
+  border-bottom: 2px solid #9edbd4;
+  box-shadow: 0 2px 0 rgba(24, 45, 73, 0.14);
+}
+
+.manager-sticky-header.is-visible {
+  display: block;
+}
+
+.manager-sticky-header__viewport {
+  width: 100%;
+  overflow: hidden;
+}
+
+.manager-sticky-header__table {
+  min-width: 0;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.manager-sticky-header__table thead th {
+  position: static;
+  top: auto;
+  z-index: auto;
+  box-sizing: border-box;
+}
+
 .manager-summary-table th:first-child,
 .manager-summary-table td:first-child {
   width: 78px;
@@ -1542,6 +1593,10 @@ textarea {
   gap: 6px;
 }
 
+.manager-new-product-row {
+  scroll-margin-top: var(--manager-table-header-top, 50px);
+}
+
 .manager-new-product-fields .input {
   min-width: 180px;
 }
@@ -1593,6 +1648,10 @@ textarea {
 
 .manager-new-product-fields strong {
   color: var(--teal-dark);
+}
+
+.manager-new-product-create {
+  justify-self: start;
 }
 
 .records-edit-table {
@@ -2320,6 +2379,12 @@ textarea {
   overflow: auto;
   border-color: #d7e1e9;
   border-radius: 11px;
+}
+
+/* Scroll horizontally without making the table header sticky inside the table box. */
+.table-wrap.manager-table-wrap {
+  overflow-x: auto;
+  overflow-y: clip;
 }
 
 .data-table th {

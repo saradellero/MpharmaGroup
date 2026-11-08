@@ -1555,6 +1555,81 @@ class AppTests(unittest.TestCase):
             ],
         )
 
+    def test_manager_can_create_catalog_product_without_saving_order(self):
+        with self.app.app_context():
+            append_records(
+                "products",
+                [
+                    {
+                        "supplier": "Proveedor Solo Catalogo",
+                        "name": "Producto Existente",
+                        "ppv": "10",
+                        "pph": "6",
+                        "tax": "0%",
+                        "barcode": "793403",
+                    }
+                ],
+            )
+            existing_product = next(
+                row
+                for row in list_records("products")
+                if row["name"] == "Producto Existente"
+            )
+            append_records(
+                "purchaseorders",
+                [
+                    {
+                        "number": "109018",
+                        "subject": "Pedido sin cambios",
+                        "manager": "Pharmacie Atlas",
+                        "supplier": "Proveedor Solo Catalogo",
+                        "deadline": "2026-11-04",
+                        "updated": "",
+                        "products": "1",
+                        "quantity": "2",
+                        "status": "Ouverte",
+                        "archived": "0",
+                    }
+                ],
+            )
+            save_order_products(
+                "109018", [existing_product | {"quantity": "2"}], "Pharmacie Atlas"
+            )
+
+        self.login_pharmacy()
+        response = self.client.post(
+            "/purchaseorder/edit/109018?mode=manager",
+            data={
+                "supplier_id": "Proveedor Solo Catalogo",
+                "new_product_name": "Producto Solo Catalogo",
+                "new_product_ppv": "25,50",
+                "new_product_pph": "15,25",
+                "new_product_tax": "10%",
+                "new_product_barcode": "793404",
+                "manager_action": "create_product",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"enregistr\xc3\xa9 dans le catalogue.", response.data)
+        self.assertIn(b"new_product_name", response.data)
+
+        with self.app.app_context():
+            new_products = [
+                row
+                for row in list_records("products")
+                if row["name"] == "Producto Solo Catalogo"
+            ]
+            order_lines = list_order_products("109018")
+        self.assertEqual(len(new_products), 1)
+        self.assertEqual(new_products[0]["ppv"], "25,50")
+        self.assertEqual(new_products[0]["pph"], "15,25")
+        self.assertEqual(new_products[0]["tax"], "10%")
+        self.assertEqual(
+            [(line["name"], line["quantity"]) for line in order_lines],
+            [("Producto Existente", "2")],
+        )
+
     def test_manager_can_select_existing_product_and_change_supplier(self):
         with self.app.app_context():
             append_records(

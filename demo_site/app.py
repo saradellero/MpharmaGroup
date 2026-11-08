@@ -1101,6 +1101,16 @@ def create_app(config: dict[str, object] | None = None) -> Flask:
                             key=lambda row: int(row.get("id", 0)),
                             default=None,
                         )
+                    if request.form.get("manager_action") == "create_product":
+                        flash("Produit enregistré dans le catalogue.", "success")
+                        return redirect(
+                            url_for(
+                                "purchaseorder_edit",
+                                order_id=order_id,
+                                mode="manager",
+                                _anchor="manager-new-product-row",
+                            )
+                        )
                 update_manager_catalog_prices_from_form(matrix)
                 manager_products = manager_products_from_form(matrix)
                 if new_product:
